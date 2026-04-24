@@ -1,0 +1,77 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/conduction-core",
+    "crates/conduction-audio",
+    "crates/conduction-analysis",
+    "crates/conduction-conductor",
+    "crates/conduction-library",
+    "crates/conduction-claude",
+    "crates/conduction-download",
+    "crates/conduction-script",
+    "crates/conduction-app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "UNLICENSED"
+authors = ["Conduction Contributors"]
+repository = "https://github.com/xxvw/conduction"
+
+[workspace.dependencies]
+# Core
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+anyhow = "1"
+
+# Concurrency
+ringbuf = "0.4"
+arc-swap = "1"
+crossbeam = "0.8"
+parking_lot = "0.12"
+
+# Audio
+cpal = "0.15"
+rodio = { version = "0.19", default-features = false, features = ["symphonia-all"] }
+symphonia = { version = "0.5", features = ["all"] }
+rubato = "0.16"
+
+# Analysis
+aubio-rs = "0.2"
+
+# Persistence / config
+rusqlite = { version = "0.32", features = ["bundled"] }
+directories = "5"
+
+# Scripting
+mlua = { version = "0.10", features = ["lua54", "vendored"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# Workspace-internal
+conduction-core = { path = "crates/conduction-core" }
+conduction-audio = { path = "crates/conduction-audio" }
+conduction-analysis = { path = "crates/conduction-analysis" }
+conduction-conductor = { path = "crates/conduction-conductor" }
+conduction-library = { path = "crates/conduction-library" }
+conduction-claude = { path = "crates/conduction-claude" }
+conduction-download = { path = "crates/conduction-download" }
+conduction-script = { path = "crates/conduction-script" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+[profile.dev]
+opt-level = 1

@@ -1,0 +1,18 @@
+[package]
+name = "conduction-conductor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Conductor layer: template execution, cue matching, instruction aggregation."
+
+[dependencies]
+conduction-core.workspace = true
+ringbuf.workspace = true
+arc-swap.workspace = true
+crossbeam.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+thiserror.workspace = true

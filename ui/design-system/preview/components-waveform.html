@@ -1,0 +1,107 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css"></head>
+<body><div class="card" style="background:#0C0E12">
+  <div style="background:linear-gradient(180deg,#161A22,#13161C);border:1px solid #2D3440;border-radius:14px;padding:14px 16px 12px;box-shadow:0 4px 12px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.05)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+      <div style="display:flex;align-items:baseline;gap:12px">
+        <span style="font-family:'LINE Seed JP';font-weight:800;font-size:10px;color:#4FE3B2;letter-spacing:0.18em;background:rgba(79,227,178,0.1);border:1px solid rgba(79,227,178,0.28);border-radius:4px;padding:3px 8px">DECK A</span>
+        <span style="font-family:'LINE Seed JP';font-weight:700;font-size:14px;color:#F5F7FB;letter-spacing:-0.005em">Midnight Drive</span>
+        <span style="font-size:11px;color:#828DA2">Kaoru · 124 BPM</span>
+      </div>
+      <span style="font-family:'JetBrains Mono';font-size:11px;color:#BAC3D2;letter-spacing:0.02em">03:42 / 05:18</span>
+    </div>
+
+    <svg id="wv" viewBox="0 0 600 112" style="width:100%;height:104px;display:block">
+      <defs>
+        <!-- Refined, less saturated palette for 3-band -->
+        <linearGradient id="gLow" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="#E8935A"/><stop offset="1" stop-color="#B86A3A"/>
+        </linearGradient>
+        <linearGradient id="gMid" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="#4FE3B2"/><stop offset="1" stop-color="#2BB38A"/>
+        </linearGradient>
+        <linearGradient id="gHi" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="#8A9BE8"/><stop offset="1" stop-color="#5B70C2"/>
+        </linearGradient>
+        <linearGradient id="played" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stop-color="rgba(0,0,0,0.35)"/>
+          <stop offset="1" stop-color="rgba(0,0,0,0)"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Beat grid -->
+      <g id="grid"></g>
+
+      <!-- Center guideline -->
+      <line x1="0" y1="62" x2="600" y2="62" stroke="rgba(255,255,255,0.05)"/>
+
+      <!-- Wave -->
+      <g id="wave"></g>
+
+      <!-- Dim upcoming -->
+      <rect x="300" y="16" width="300" height="92" fill="rgba(7,8,10,0.38)"/>
+
+      <!-- Markers row -->
+      <g font-family="JetBrains Mono" font-size="8" letter-spacing="0.12em">
+        <rect x="120" y="4" width="1.5" height="12" fill="#E8B868"/>
+        <text x="124" y="12" fill="#E8B868">CUE 1</text>
+        <rect x="260" y="4" width="1.5" height="12" fill="#E8B868"/>
+        <text x="264" y="12" fill="#E8B868">CUE 2</text>
+        <rect x="360" y="4" width="1.5" height="12" fill="#A089DC"/>
+        <rect x="420" y="4" width="1.5" height="12" fill="#A089DC"/>
+        <rect x="360" y="4" width="60" height="12" fill="rgba(160,137,220,0.12)" stroke="rgba(160,137,220,0.35)" stroke-width="0.5"/>
+        <text x="364" y="12" fill="#A089DC">LOOP · 8 BARS</text>
+        <rect x="480" y="4" width="1.5" height="12" fill="#E8B868"/>
+        <text x="484" y="12" fill="#E8B868">CUE 3</text>
+      </g>
+
+      <!-- Playhead -->
+      <line x1="300" y1="16" x2="300" y2="108" stroke="#F5F7FB" stroke-width="1"/>
+      <polygon points="296,16 304,16 300,21" fill="#F5F7FB"/>
+      <polygon points="296,108 304,108 300,103" fill="#F5F7FB"/>
+    </svg>
+
+    <!-- Overview / navigator strip -->
+    <div style="margin-top:8px;position:relative">
+      <svg viewBox="0 0 600 16" style="width:100%;height:14px;display:block">
+        <g id="mini"></g>
+      </svg>
+      <div style="position:absolute;left:48%;top:0;width:8%;height:14px;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.04);border-radius:2px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05)"></div>
+    </div>
+
+    <script>
+      (function(){
+        const wave = document.getElementById('wave');
+        const mini = document.getElementById('mini');
+        const grid = document.getElementById('grid');
+        let s = '', m = '', g = '';
+        const W = 600, BW = 2, GAP = 1, N = Math.floor(W/(BW+GAP));
+        for(let i=0;i<N;i++){
+          const x = i*(BW+GAP);
+          const low = Math.abs(Math.sin(i*0.11)*0.65 + Math.sin(i*0.31)*0.3) * 30;
+          const mid = Math.abs(Math.sin(i*0.21+1)*0.55 + Math.sin(i*0.49)*0.4) * 20;
+          const hi  = Math.abs(Math.sin(i*0.44+2)*0.45 + Math.sin(i*0.88)*0.5) * 12;
+          // upper half (stacked)
+          s += `<rect x="${x}" y="${62-low}" width="${BW}" height="${low}" fill="url(#gLow)"/>`;
+          s += `<rect x="${x}" y="${62-low-mid}" width="${BW}" height="${mid}" fill="url(#gMid)"/>`;
+          s += `<rect x="${x}" y="${62-low-mid-hi}" width="${BW}" height="${hi}" fill="url(#gHi)"/>`;
+          // mirror with slight attenuation for asymmetry
+          const a = 0.75;
+          s += `<rect x="${x}" y="62" width="${BW}" height="${low*a}" fill="url(#gLow)" opacity="0.8"/>`;
+          s += `<rect x="${x}" y="${62+low*a}" width="${BW}" height="${mid*a}" fill="url(#gMid)" opacity="0.8"/>`;
+          s += `<rect x="${x}" y="${62+low*a+mid*a}" width="${BW}" height="${hi*a}" fill="url(#gHi)" opacity="0.8"/>`;
+          const totalH = (low+mid+hi)*0.22;
+          const isPlayed = i < N/2;
+          m += `<rect x="${i*2}" y="${8-totalH/2}" width="1" height="${totalH}" fill="${isPlayed?'#4FE3B2':'#5A6578'}" opacity="${isPlayed?0.85:0.6}"/>`;
+        }
+        for(let bx=0; bx<=W; bx+=30){
+          const strong = (bx/30)%4===0;
+          g += `<line x1="${bx}" y1="18" x2="${bx}" y2="108" stroke="rgba(255,255,255,${strong?0.1:0.04})" stroke-width="${strong?1:0.5}"/>`;
+        }
+        wave.innerHTML = s;
+        mini.innerHTML = m;
+        grid.innerHTML = g;
+      })();
+    </script>
+  </div>
+  <p style="margin-top:12px;font-size:11px;color:#828DA2;line-height:1.5">3-band mirrored wave · amber low / mint mid / dusted-blue high · cue/loop markers · navigator below.</p>
+</div></body></html>

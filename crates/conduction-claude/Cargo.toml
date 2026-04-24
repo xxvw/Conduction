@@ -1,0 +1,20 @@
+[package]
+name = "conduction-claude"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Claude CLI integration (structure detection, beatgrid AI assist). Gated by claude-analysis feature."
+
+[features]
+default = []
+claude-analysis = []
+
+[dependencies]
+conduction-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true

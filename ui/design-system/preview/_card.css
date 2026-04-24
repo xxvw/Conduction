@@ -1,0 +1,44 @@
+@import url('../colors_and_type.css');
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-app);
+  color: var(--fg-2);
+  font-family: var(--font-sans);
+  width: 700px;
+  overflow: hidden;
+}
+.card {
+  padding: 24px;
+  box-sizing: border-box;
+  width: 700px;
+  position: relative;
+}
+.row { display: flex; gap: 12px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+.grow { flex: 1; }
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.swatch .chip {
+  height: 56px;
+  border-radius: 8px;
+  border: 1px solid var(--c-glass-stroke);
+  box-shadow: var(--inner-top);
+}
+.swatch .name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.swatch .hex {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-5);
+}

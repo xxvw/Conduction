@@ -1,0 +1,27 @@
+[package]
+name = "conduction-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Realtime audio engine for Conduction."
+
+[dependencies]
+conduction-core.workspace = true
+cpal.workspace = true
+rodio.workspace = true
+symphonia.workspace = true
+rubato.workspace = true
+ringbuf.workspace = true
+arc-swap.workspace = true
+crossbeam.workspace = true
+parking_lot.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+[[bin]]
+name = "conduction-audio-probe"
+path = "src/bin/probe.rs"

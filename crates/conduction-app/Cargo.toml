@@ -1,0 +1,31 @@
+[package]
+name = "conduction-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tauri application entry point for Conduction."
+
+[features]
+default = ["claude-analysis"]
+claude-analysis = ["conduction-claude/claude-analysis"]
+yt-download = ["conduction-download/yt-download"]
+
+[dependencies]
+conduction-core.workspace = true
+conduction-audio.workspace = true
+conduction-analysis.workspace = true
+conduction-conductor.workspace = true
+conduction-library.workspace = true
+conduction-claude.workspace = true
+conduction-download.workspace = true
+conduction-script.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+anyhow.workspace = true
+# tauri本体はPhase 2で追加

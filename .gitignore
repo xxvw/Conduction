@@ -1,0 +1,50 @@
+# --- Rust ---
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# --- Node / Vite ---
+node_modules
+dist
+.vite
+*.log
+.npm
+.pnpm-store
+
+# --- Tauri ---
+ui/src-tauri/target
+ui/src-tauri/gen
+
+# --- Editor / OS ---
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# --- User data / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Build artifacts ---
+/release
+/bundle
+*.dmg
+*.app
+*.msi
+*.exe
+*.AppImage
+
+# --- Archive (renew.zipの一時展開) ---
+.tmp_renew/
+.archive/
+
+# --- Crash / session ---
+crashes/
+last_session.toml
+
+# --- Claude Code ---
+.claude/

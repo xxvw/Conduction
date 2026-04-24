@@ -1,0 +1,15 @@
+[package]
+name = "conduction-analysis"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Track analysis (BPM, key, energy, structure) for Conduction."
+
+[dependencies]
+conduction-core.workspace = true
+# aubio-rs.workspace = true  # 有効化はフェーズ3で
+tracing.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,301 @@
+/* ============================================================
+   Conduction — Colors & Type
+   ============================================================
+   Dark, modern, glassmorphic DJ software. Mint-green accent.
+   Font: LINE Seed JP (Google Fonts CDN)
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=LINE+Seed+JP:wght@100;400;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* ---------- Neutral scale (warm-tinted charcoal, premium feel) ---------- */
+  --c-ink-0:   #07080A;   /* deepest */
+  --c-ink-1:   #0C0E12;   /* app bg */
+  --c-ink-2:   #13161C;   /* panel bg */
+  --c-ink-3:   #1A1E26;   /* raised panel */
+  --c-ink-4:   #232833;   /* field bg / hover */
+  --c-ink-5:   #2D3440;   /* border / divider */
+  --c-ink-6:   #3B4453;   /* muted stroke */
+  --c-ink-7:   #5A6578;   /* disabled fg */
+  --c-ink-8:   #828DA2;   /* fg tertiary */
+  --c-ink-9:   #BAC3D2;   /* fg secondary */
+  --c-ink-10:  #E6EAF1;   /* fg primary */
+  --c-ink-11:  #F5F7FB;   /* fg highest */
+
+  /* ---------- Glass surfaces (translucent; layer over ink-1) ---- */
+  --c-glass-1: rgba(255, 255, 255, 0.03);
+  --c-glass-2: rgba(255, 255, 255, 0.05);
+  --c-glass-3: rgba(255, 255, 255, 0.07);
+  --c-glass-4: rgba(255, 255, 255, 0.10);
+  --c-glass-stroke:       rgba(255, 255, 255, 0.08);
+  --c-glass-stroke-strong:rgba(255, 255, 255, 0.14);
+  --c-glass-inner-top:    rgba(255, 255, 255, 0.06); /* inner hilight */
+
+  /* ---------- Accent: softened mint (more muted, premium) ----- */
+  --c-accent:         #4FE3B2;   /* dialed back from neon */
+  --c-accent-hi:      #7CEEC7;
+  --c-accent-lo:      #2BB38A;
+  --c-accent-dim:     #14624B;
+  --c-accent-glow:    rgba(79, 227, 178, 0.28);
+  --c-accent-soft:    rgba(79, 227, 178, 0.10);
+
+  /* ---------- DJ-domain semantic channel colors ---------------- */
+  --c-deck-a:        #4FE3B2;   /* Deck A — muted mint */
+  --c-deck-b:        #E8915A;   /* Deck B — softened amber */
+  --c-deck-c:        #8A9BE8;   /* Deck C — dusted blue */
+  --c-deck-d:        #E87098;   /* Deck D — muted rose */
+  --c-cue:           #E8B868;   /* cue — warm gold, not neon yellow */
+  --c-loop:          #A089DC;   /* loop — muted violet */
+  --c-beat-grid:     rgba(255,255,255,0.18);
+
+  /* ---------- Status ------------------------------------------- */
+  --c-success:       #00E08A;
+  --c-warning:       #FFB840;
+  --c-danger:        #FF4A5C;
+  --c-info:          #3EA8FF;
+  --c-live:          #FF2D55;   /* recording / live */
+
+  /* ---------- Semantic roles ----------------------------------- */
+  --bg-app:          var(--c-ink-1);
+  --bg-panel:        var(--c-ink-2);
+  --bg-panel-raised: var(--c-ink-3);
+  --bg-field:        var(--c-ink-4);
+  --bg-hover:        rgba(255,255,255,0.04);
+  --bg-active:       rgba(255,255,255,0.07);
+
+  --fg-1:            var(--c-ink-11);  /* highest emphasis */
+  --fg-2:            var(--c-ink-10);  /* body */
+  --fg-3:            var(--c-ink-9);   /* secondary */
+  --fg-4:            var(--c-ink-8);   /* tertiary / labels */
+  --fg-5:            var(--c-ink-7);   /* disabled / hint */
+  --fg-accent:       var(--c-accent);
+
+  --stroke-1:        var(--c-ink-5);
+  --stroke-2:        var(--c-ink-6);
+  --stroke-glass:    var(--c-glass-stroke);
+
+  /* ---------- Typography --------------------------------------- */
+  --font-sans: "LINE Seed JP", "LINE Seed JP_TTF", -apple-system, BlinkMacSystemFont,
+               "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --font-display: "LINE Seed JP", "LINE Seed JP_TTF", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, ui-monospace, monospace;
+
+  /* numeric tracking — DJ UIs live on tabular numbers */
+  --feat-num: "tnum" 1, "lnum" 1;
+
+  /* ---------- Type scale --------------------------------------- */
+  --fs-display: 56px;
+  --fs-h1: 40px;
+  --fs-h2: 28px;
+  --fs-h3: 22px;
+  --fs-h4: 18px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+  --fs-micro: 10px;
+
+  --lh-tight: 1.1;
+  --lh-snug: 1.25;
+  --lh-base: 1.5;
+  --lh-loose: 1.7;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.08em;
+  --tracking-ultrawide: 0.16em;   /* for micro labels / overlines */
+
+  /* ---------- Spacing (4px base) ------------------------------- */
+  --s-0: 0;
+  --s-1: 2px;
+  --s-2: 4px;
+  --s-3: 8px;
+  --s-4: 12px;
+  --s-5: 16px;
+  --s-6: 20px;
+  --s-7: 24px;
+  --s-8: 32px;
+  --s-9: 40px;
+  --s-10: 56px;
+  --s-11: 72px;
+  --s-12: 96px;
+
+  /* ---------- Radii -------------------------------------------- */
+  --r-0: 0;
+  --r-1: 2px;
+  --r-2: 4px;     /* small chips, buttons inside a panel */
+  --r-3: 8px;     /* default control */
+  --r-4: 12px;    /* cards */
+  --r-5: 16px;    /* large cards */
+  --r-6: 20px;    /* hero surfaces */
+  --r-7: 24px;
+  --r-full: 999px;
+
+  /* ---------- Shadow + Glow system ----------------------------- */
+  /* lifted panels — multi-layer for depth */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.5);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(0,0,0,0.5);
+  --shadow-3: 0 16px 40px rgba(0,0,0,0.55), 0 4px 10px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(0,0,0,0.5);
+  --shadow-4: 0 32px 80px rgba(0,0,0,0.6),  0 8px 18px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(0,0,0,0.5);
+
+  /* inner rim light — more refined */
+  --inner-top:    inset 0 1px 0 rgba(255,255,255,0.06);
+  --inner-bottom: inset 0 -1px 0 rgba(0,0,0,0.4);
+  --inner-glass:  inset 0 1px 0 rgba(255,255,255,0.08),
+                  inset 0 -1px 0 rgba(0,0,0,0.4),
+                  inset 1px 0 0 rgba(255,255,255,0.03),
+                  inset -1px 0 0 rgba(255,255,255,0.03);
+
+  /* accent glows (feedback) */
+  --glow-accent:   0 0 0 1px var(--c-accent),
+                   0 0 16px 0 var(--c-accent-glow);
+  --glow-accent-soft: 0 0 24px 0 var(--c-accent-soft);
+  --glow-live:     0 0 0 1px var(--c-live),
+                   0 0 20px 0 rgba(255,45,85,0.4);
+
+  /* ---------- Blur (glassmorphism) ----------------------------- */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 28px;
+  --blur-xl: 48px;
+
+  /* ---------- Motion ------------------------------------------- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-1: 80ms;     /* press */
+  --dur-2: 160ms;    /* hover */
+  --dur-3: 260ms;    /* enter/exit */
+  --dur-4: 420ms;    /* panel transitions */
+
+  /* ---------- Layout ------------------------------------------- */
+  --titlebar-h: 36px;
+  --toolbar-h: 52px;
+  --transport-h: 72px;
+  --mixer-w: 320px;
+  --sidebar-w: 248px;
+}
+
+/* ============================================================
+   BASE ELEMENTS
+   ============================================================ */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-app);
+  color: var(--fg-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-base);
+  font-feature-settings: var(--feat-num);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- Display / headings ---------- */
+.display, h1.display {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--fs-display);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+
+h1 {
+  font-weight: 800;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  margin: 0;
+}
+
+h2 {
+  font-weight: 700;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  margin: 0;
+}
+
+h3 {
+  font-weight: 700;
+  font-size: var(--fs-h3);
+  line-height: var(--lh-snug);
+  color: var(--fg-1);
+  margin: 0;
+}
+
+h4 {
+  font-weight: 700;
+  font-size: var(--fs-h4);
+  line-height: var(--lh-snug);
+  color: var(--fg-2);
+  margin: 0;
+}
+
+p {
+  font-size: var(--fs-body);
+  line-height: var(--lh-base);
+  color: var(--fg-3);
+  margin: 0;
+}
+
+/* ---------- Small / overline / mono ---------- */
+.small, small {
+  font-size: var(--fs-small);
+  color: var(--fg-4);
+}
+
+.micro {
+  font-size: var(--fs-micro);
+  color: var(--fg-4);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* All-caps tracked label — used everywhere in the UI for section headers */
+.overline, .label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-ultrawide);
+  color: var(--fg-4);
+}
+
+code, .mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--fg-2);
+  font-feature-settings: var(--feat-num);
+}
+
+/* Tabular numbers — critical for BPM / time display */
+.tabular, .bpm, .time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* ============================================================
+   UTILITY: Glass surface
+   ============================================================ */
+.glass {
+  background: var(--c-glass-2);
+  backdrop-filter: blur(var(--blur-md)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(140%);
+  border: 1px solid var(--c-glass-stroke);
+  box-shadow: var(--shadow-2), var(--inner-glass);
+}
+
+.glass-strong {
+  background: var(--c-glass-4);
+  backdrop-filter: blur(var(--blur-lg)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(160%);
+  border: 1px solid var(--c-glass-stroke-strong);
+  box-shadow: var(--shadow-3), var(--inner-glass);
+}
+
+/* Selection */
+::selection { background: var(--c-accent-soft); color: var(--c-accent-hi); }
