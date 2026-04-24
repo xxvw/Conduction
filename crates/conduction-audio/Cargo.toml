@@ -19,6 +19,7 @@ arc-swap.workspace = true
 crossbeam.workspace = true
 parking_lot.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 
