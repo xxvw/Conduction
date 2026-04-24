@@ -20,6 +20,45 @@ pub enum DeckId {
     B,
 }
 
+/// テンポ調整レンジ（要件 6.1）。
+///
+/// `tempo_adjust` が `-1.0..=1.0` の範囲で、レンジの最大値までスケールされる。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TempoRange {
+    /// ±6%
+    Six,
+    /// ±10%
+    Ten,
+    /// ±16%
+    Sixteen,
+}
+
+impl TempoRange {
+    /// 最大テンポ調整率（0.06 / 0.10 / 0.16）。
+    pub fn max_adjust(self) -> f32 {
+        match self {
+            Self::Six => 0.06,
+            Self::Ten => 0.10,
+            Self::Sixteen => 0.16,
+        }
+    }
+
+    /// UI / ログ用の短い表記。
+    pub fn as_percent(self) -> u8 {
+        match self {
+            Self::Six => 6,
+            Self::Ten => 10,
+            Self::Sixteen => 16,
+        }
+    }
+}
+
+impl Default for TempoRange {
+    fn default() -> Self {
+        Self::Six
+    }
+}
+
 /// 単一曲を再生する "デッキ"。
 ///
 /// `Deck` は自身の `Sink` を通じて独立に再生制御を行う。
@@ -41,6 +80,11 @@ pub struct Deck {
     /// Mixer が最終合成した Sink への実効ボリューム。
     /// `channel_volume * crossfader_side * master_volume` で算出される。
     effective_volume: f32,
+
+    // --- テンポ ---
+    tempo_range: TempoRange,
+    /// -1.0 .. 1.0（フェーダー位置相当）。実速度は `1 + tempo_adjust * range.max_adjust()`。
+    tempo_adjust: f32,
 }
 
 impl Deck {
@@ -59,6 +103,8 @@ impl Deck {
             paused_at: None,
             channel_volume: 1.0,
             effective_volume: 1.0,
+            tempo_range: TempoRange::default(),
+            tempo_adjust: 0.0,
         })
     }
 
@@ -82,6 +128,7 @@ impl Deck {
             Sink::try_new(device.handle()).map_err(|e| AudioError::Stream(e.to_string()))?;
         self.sink.pause();
         self.sink.set_volume(self.effective_volume);
+        self.sink.set_speed(self.playback_speed());
         self.sink.append(decoder);
 
         self.started_at = None;
@@ -170,6 +217,39 @@ impl Deck {
     pub fn effective_volume(&self) -> f32 {
         self.effective_volume
     }
+
+    // --- テンポ ---
+
+    pub fn tempo_range(&self) -> TempoRange {
+        self.tempo_range
+    }
+
+    pub fn set_tempo_range(&mut self, range: TempoRange) {
+        self.tempo_range = range;
+        self.apply_speed();
+    }
+
+    pub fn tempo_adjust(&self) -> f32 {
+        self.tempo_adjust
+    }
+
+    /// -1.0 〜 1.0 のフェーダー位置を受け取る。
+    /// レンジ外の値はクランプされる。
+    pub fn set_tempo_adjust(&mut self, pos: f32) {
+        self.tempo_adjust = pos.clamp(-1.0, 1.0);
+        self.apply_speed();
+    }
+
+    /// 現在の再生速度（1.0 が原速）。
+    ///
+    /// Phase 2b ではこの速度がピッチに直結する。キーロック（ピッチ独立化）は Phase 2g。
+    pub fn playback_speed(&self) -> f32 {
+        1.0 + self.tempo_adjust * self.tempo_range.max_adjust()
+    }
+
+    fn apply_speed(&mut self) {
+        self.sink.set_speed(self.playback_speed());
+    }
 }
 
 #[cfg(test)]
@@ -182,5 +262,30 @@ mod tests {
         // Deck は OutputDevice を要求するので、ここでは定数のみ確認する。
         assert_eq!(CHANNEL_VOLUME_MIN, 0.0);
         assert!(CHANNEL_VOLUME_MAX > 1.0);
+    }
+
+    #[test]
+    fn tempo_range_percentages() {
+        assert_eq!(TempoRange::Six.as_percent(), 6);
+        assert_eq!(TempoRange::Ten.as_percent(), 10);
+        assert_eq!(TempoRange::Sixteen.as_percent(), 16);
+        assert!((TempoRange::Six.max_adjust() - 0.06).abs() < 1e-6);
+        assert!((TempoRange::Ten.max_adjust() - 0.10).abs() < 1e-6);
+        assert!((TempoRange::Sixteen.max_adjust() - 0.16).abs() < 1e-6);
+    }
+
+    /// `playback_speed` 計算は Sink 非依存で検証できる純粋関数なので、
+    /// 各境界値でカバーする。
+    #[test]
+    fn playback_speed_formula() {
+        // Sink なしで検算する（Deck 構築は OutputDevice 必須なので式を直接再現）。
+        fn speed(range: TempoRange, adjust: f32) -> f32 {
+            1.0 + adjust * range.max_adjust()
+        }
+        assert!((speed(TempoRange::Six, 0.0) - 1.0).abs() < 1e-6);
+        assert!((speed(TempoRange::Six, 1.0) - 1.06).abs() < 1e-6);
+        assert!((speed(TempoRange::Six, -1.0) - 0.94).abs() < 1e-6);
+        assert!((speed(TempoRange::Sixteen, 1.0) - 1.16).abs() < 1e-6);
+        assert!((speed(TempoRange::Sixteen, -0.5) - 0.92).abs() < 1e-6);
     }
 }

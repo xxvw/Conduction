@@ -12,7 +12,7 @@ pub mod device;
 pub mod error;
 pub mod mixer;
 
-pub use deck::{Deck, DeckId, CHANNEL_VOLUME_MAX, CHANNEL_VOLUME_MIN};
+pub use deck::{Deck, DeckId, TempoRange, CHANNEL_VOLUME_MAX, CHANNEL_VOLUME_MIN};
 pub use device::OutputDevice;
 pub use error::{AudioError, AudioResult};
 pub use mixer::{

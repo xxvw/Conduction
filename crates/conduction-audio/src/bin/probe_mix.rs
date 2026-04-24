@@ -20,7 +20,7 @@
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
-use conduction_audio::{DeckId, Mixer, OutputDevice};
+use conduction_audio::{DeckId, Mixer, OutputDevice, TempoRange};
 
 fn main() -> anyhow::Result<()> {
     init_tracing();
@@ -122,9 +122,47 @@ fn handle(input: &str, mixer: &mut Mixer) -> Action {
             }
             None => println!("[probe-mix] m requires a value in [0, 2]"),
         },
+        "ta" => apply_tempo(mixer, DeckId::A, parts.next()),
+        "tb" => apply_tempo(mixer, DeckId::B, parts.next()),
+        "ra" => apply_range(mixer, DeckId::A, parts.next()),
+        "rb" => apply_range(mixer, DeckId::B, parts.next()),
         other => println!("[probe-mix] unknown command: {other} (type 'h' for help)"),
     }
     Action::Continue
+}
+
+fn apply_tempo(mixer: &mut Mixer, id: DeckId, arg: Option<&str>) {
+    let Some(v) = parse_f32(arg) else {
+        println!("[probe-mix] t{{a,b}} requires a value in [-1, 1]");
+        return;
+    };
+    let deck = mixer.deck(id);
+    deck.set_tempo_adjust(v);
+    println!(
+        "[probe-mix] deck {id:?} tempo_adjust = {:+.3}  speed = {:.4}x  (range ±{}%)",
+        deck.tempo_adjust(),
+        deck.playback_speed(),
+        deck.tempo_range().as_percent(),
+    );
+}
+
+fn apply_range(mixer: &mut Mixer, id: DeckId, arg: Option<&str>) {
+    let range = match arg {
+        Some("6") => TempoRange::Six,
+        Some("10") => TempoRange::Ten,
+        Some("16") => TempoRange::Sixteen,
+        _ => {
+            println!("[probe-mix] r{{a,b}} requires one of: 6 | 10 | 16");
+            return;
+        }
+    };
+    let deck = mixer.deck(id);
+    deck.set_tempo_range(range);
+    println!(
+        "[probe-mix] deck {id:?} tempo range = ±{}%  speed = {:.4}x",
+        deck.tempo_range().as_percent(),
+        deck.playback_speed(),
+    );
 }
 
 fn toggle(mixer: &mut Mixer, id: DeckId) {
@@ -149,6 +187,10 @@ fn print_help() {
   cf <-1..1>     crossfader (-1 = full A, +1 = full B)
   va <0..2>      deck A channel volume
   vb <0..2>      deck B channel volume
+  ta <-1..1>     deck A tempo adjust (fader position)
+  tb <-1..1>     deck B tempo adjust (fader position)
+  ra <6|10|16>   deck A tempo range (±%)
+  rb <6|10|16>   deck B tempo range (±%)
   m  <0..2>      master volume
   s              show status
   h              show this help
@@ -159,31 +201,62 @@ fn print_help() {
 fn print_status(mixer: &mut Mixer) {
     let cf = mixer.crossfader();
     let master = mixer.master_volume();
-    let a_ch = mixer.deck_a().channel_volume();
-    let a_eff = mixer.deck_a().effective_volume();
-    let a_state = state_str(mixer, DeckId::A);
-    let a_pos = mixer.deck_a().position().as_secs_f64();
-    let a_dur = mixer
-        .deck_a()
-        .duration()
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
-    let b_ch = mixer.deck_b().channel_volume();
-    let b_eff = mixer.deck_b().effective_volume();
-    let b_state = state_str(mixer, DeckId::B);
-    let b_pos = mixer.deck_b().position().as_secs_f64();
-    let b_dur = mixer
-        .deck_b()
-        .duration()
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
+
+    let a = DeckSnapshot::of(mixer, DeckId::A);
+    let b = DeckSnapshot::of(mixer, DeckId::B);
 
     println!(
         "\n--- status ---
   crossfader: {cf:+.3}     master: {master:.3}
-  Deck A [{a_state}]  ch {a_ch:.2}  eff {a_eff:.2}  pos {a_pos:6.2}/{a_dur:6.2}s
-  Deck B [{b_state}]  ch {b_ch:.2}  eff {b_eff:.2}  pos {b_pos:6.2}/{b_dur:6.2}s\n"
+  Deck A [{s}]  ch {ch:.2}  eff {eff:.2}  spd {spd:.4}x (±{rng}%, adj {adj:+.2})  pos {pos:6.2}/{dur:6.2}s",
+        s = a.state,
+        ch = a.ch_vol,
+        eff = a.eff_vol,
+        spd = a.speed,
+        rng = a.range_pct,
+        adj = a.tempo_adjust,
+        pos = a.pos,
+        dur = a.dur,
     );
+    println!(
+        "  Deck B [{s}]  ch {ch:.2}  eff {eff:.2}  spd {spd:.4}x (±{rng}%, adj {adj:+.2})  pos {pos:6.2}/{dur:6.2}s\n",
+        s = b.state,
+        ch = b.ch_vol,
+        eff = b.eff_vol,
+        spd = b.speed,
+        rng = b.range_pct,
+        adj = b.tempo_adjust,
+        pos = b.pos,
+        dur = b.dur,
+    );
+}
+
+struct DeckSnapshot {
+    state: &'static str,
+    ch_vol: f32,
+    eff_vol: f32,
+    speed: f32,
+    range_pct: u8,
+    tempo_adjust: f32,
+    pos: f64,
+    dur: f64,
+}
+
+impl DeckSnapshot {
+    fn of(mixer: &mut Mixer, id: DeckId) -> Self {
+        let state = state_str(mixer, id);
+        let deck = mixer.deck(id);
+        Self {
+            state,
+            ch_vol: deck.channel_volume(),
+            eff_vol: deck.effective_volume(),
+            speed: deck.playback_speed(),
+            range_pct: deck.tempo_range().as_percent(),
+            tempo_adjust: deck.tempo_adjust(),
+            pos: deck.position().as_secs_f64(),
+            dur: deck.duration().map(|d| d.as_secs_f64()).unwrap_or(0.0),
+        }
+    }
 }
 
 fn state_str(mixer: &mut Mixer, id: DeckId) -> &'static str {
