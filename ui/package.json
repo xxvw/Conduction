@@ -9,8 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
-    "app:dev": "tauri dev --config ../crates/conduction-app/tauri.conf.json",
-    "app:build": "tauri build --config ../crates/conduction-app/tauri.conf.json"
+    "app:dev": "cd .. && ./ui/node_modules/.bin/tauri dev",
+    "app:build": "cd .. && ./ui/node_modules/.bin/tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.0",
