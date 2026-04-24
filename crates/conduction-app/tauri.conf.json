@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Conduction",
+  "version": "0.1.0",
+  "identifier": "com.xxvw.conduction",
+  "build": {
+    "frontendDist": "../../ui/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": {
+      "cwd": "../../ui",
+      "script": "npm run dev"
+    },
+    "beforeBuildCommand": {
+      "cwd": "../../ui",
+      "script": "npm run build"
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Conduction",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "decorations": true,
+        "fullscreen": false,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "category": "Music",
+    "copyright": "",
+    "shortDescription": "Programmable DJ engine",
+    "longDescription": "Conduct your mix, don't perform it. A programmable, extensible DJ engine for live use."
+  }
+}

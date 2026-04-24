@@ -1,0 +1,256 @@
+//! Audio engine thread host.
+//!
+//! `rodio::OutputStream` は `!Send` のため、専用スレッドで所有する。
+//! UI スレッドからは `AudioHandle` 経由で channel にコマンドを送り、
+//! スナップショットを `ArcSwap` で非同期に読み取る。
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
+
+use arc_swap::ArcSwap;
+use conduction_audio::{DeckId, Mixer, OutputDevice, TempoRange};
+use crossbeam::channel::{self, Sender};
+use serde::Serialize;
+use tracing::{error, info, warn};
+
+/// UI から audio スレッドに送るコマンド。
+#[derive(Debug)]
+pub enum AudioCommand {
+    Load { deck: DeckId, path: PathBuf },
+    Play(DeckId),
+    Pause(DeckId),
+    Stop(DeckId),
+    SetCrossfader(f32),
+    SetChannelVolume { deck: DeckId, volume: f32 },
+    SetMasterVolume(f32),
+    SetTempoAdjust { deck: DeckId, adjust: f32 },
+    SetTempoRange { deck: DeckId, range: TempoRange },
+}
+
+/// UI が読む 1 デッキ分のスナップショット。
+#[derive(Debug, Clone, Serialize)]
+pub struct DeckSnapshot {
+    pub id: &'static str,
+    pub state: &'static str,
+    pub loaded_path: Option<String>,
+    pub channel_volume: f32,
+    pub effective_volume: f32,
+    pub tempo_range_percent: u8,
+    pub tempo_adjust: f32,
+    pub playback_speed: f32,
+    pub position_sec: f64,
+    pub duration_sec: Option<f64>,
+}
+
+/// Mixer 全体のスナップショット。
+#[derive(Debug, Clone, Serialize)]
+pub struct MixerSnapshot {
+    pub crossfader: f32,
+    pub master_volume: f32,
+    pub deck_a: DeckSnapshot,
+    pub deck_b: DeckSnapshot,
+}
+
+/// UI 側が保持するハンドル。
+pub struct AudioHandle {
+    tx: Sender<AudioCommand>,
+    snapshot: Arc<ArcSwap<MixerSnapshot>>,
+}
+
+impl AudioHandle {
+    pub fn send(&self, cmd: AudioCommand) -> anyhow::Result<()> {
+        self.tx
+            .send(cmd)
+            .map_err(|e| anyhow::anyhow!("audio command channel closed: {e}"))
+    }
+
+    pub fn snapshot(&self) -> MixerSnapshot {
+        (**self.snapshot.load()).clone()
+    }
+}
+
+/// audio スレッドを起動してハンドルを返す。
+pub fn spawn() -> anyhow::Result<AudioHandle> {
+    let (tx, rx) = channel::unbounded::<AudioCommand>();
+    let initial = empty_snapshot();
+    let snapshot = Arc::new(ArcSwap::from_pointee(initial));
+    let snapshot_worker = snapshot.clone();
+
+    let (ready_tx, ready_rx) = channel::bounded::<anyhow::Result<()>>(1);
+
+    thread::Builder::new()
+        .name("audio-engine".into())
+        .spawn(move || {
+            let device = match OutputDevice::open_default() {
+                Ok(d) => d,
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e.into()));
+                    return;
+                }
+            };
+            let mut mixer = match Mixer::new(&device) {
+                Ok(m) => m,
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e.into()));
+                    return;
+                }
+            };
+            let _ = ready_tx.send(Ok(()));
+            info!("audio engine thread started");
+
+            let mut deck_paths: [Option<PathBuf>; 2] = [None, None];
+
+            loop {
+                while let Ok(cmd) = rx.try_recv() {
+                    apply_command(&device, &mut mixer, &mut deck_paths, cmd);
+                }
+                let snap = build_snapshot(&mut mixer, &deck_paths);
+                snapshot_worker.store(Arc::new(snap));
+
+                // 50Hz（20ms）で snapshot 更新。UI の polling は 100ms 程度想定。
+                thread::sleep(Duration::from_millis(20));
+            }
+        })?;
+
+    ready_rx
+        .recv()
+        .map_err(|_| anyhow::anyhow!("audio engine failed to initialize"))??;
+
+    Ok(AudioHandle { tx, snapshot })
+}
+
+fn apply_command(
+    device: &OutputDevice,
+    mixer: &mut Mixer,
+    paths: &mut [Option<PathBuf>; 2],
+    cmd: AudioCommand,
+) {
+    match cmd {
+        AudioCommand::Load { deck, path } => match mixer.deck(deck).load(device, &path) {
+            Ok(()) => paths[deck_idx(deck)] = Some(path),
+            Err(e) => {
+                error!(?e, ?deck, "load failed");
+                paths[deck_idx(deck)] = None;
+            }
+        },
+        AudioCommand::Play(deck) => mixer.deck(deck).play(),
+        AudioCommand::Pause(deck) => mixer.deck(deck).pause(),
+        AudioCommand::Stop(deck) => mixer.deck(deck).stop(),
+        AudioCommand::SetCrossfader(v) => mixer.set_crossfader(v),
+        AudioCommand::SetChannelVolume { deck, volume } => {
+            mixer.set_channel_volume(deck, volume);
+        }
+        AudioCommand::SetMasterVolume(v) => mixer.set_master_volume(v),
+        AudioCommand::SetTempoAdjust { deck, adjust } => {
+            mixer.deck(deck).set_tempo_adjust(adjust);
+        }
+        AudioCommand::SetTempoRange { deck, range } => {
+            mixer.deck(deck).set_tempo_range(range);
+        }
+    }
+}
+
+fn deck_idx(id: DeckId) -> usize {
+    match id {
+        DeckId::A => 0,
+        DeckId::B => 1,
+    }
+}
+
+fn build_snapshot(mixer: &mut Mixer, paths: &[Option<PathBuf>; 2]) -> MixerSnapshot {
+    MixerSnapshot {
+        crossfader: mixer.crossfader(),
+        master_volume: mixer.master_volume(),
+        deck_a: build_deck_snapshot(mixer, DeckId::A, paths[0].as_ref()),
+        deck_b: build_deck_snapshot(mixer, DeckId::B, paths[1].as_ref()),
+    }
+}
+
+fn build_deck_snapshot(
+    mixer: &mut Mixer,
+    id: DeckId,
+    path: Option<&PathBuf>,
+) -> DeckSnapshot {
+    let state = deck_state(mixer, id);
+    let deck = mixer.deck(id);
+    DeckSnapshot {
+        id: deck_label(id),
+        state,
+        loaded_path: path.map(|p| p.display().to_string()),
+        channel_volume: deck.channel_volume(),
+        effective_volume: deck.effective_volume(),
+        tempo_range_percent: deck.tempo_range().as_percent(),
+        tempo_adjust: deck.tempo_adjust(),
+        playback_speed: deck.playback_speed(),
+        position_sec: deck.position().as_secs_f64(),
+        duration_sec: deck.duration().map(|d| d.as_secs_f64()),
+    }
+}
+
+fn deck_state(mixer: &mut Mixer, id: DeckId) -> &'static str {
+    let deck = mixer.deck(id);
+    if deck.is_finished() {
+        "idle"
+    } else if deck.is_playing() {
+        "play"
+    } else if deck.is_paused() {
+        "paused"
+    } else {
+        "loaded"
+    }
+}
+
+fn deck_label(id: DeckId) -> &'static str {
+    match id {
+        DeckId::A => "A",
+        DeckId::B => "B",
+    }
+}
+
+fn empty_snapshot() -> MixerSnapshot {
+    MixerSnapshot {
+        crossfader: 0.0,
+        master_volume: 1.0,
+        deck_a: empty_deck_snapshot("A"),
+        deck_b: empty_deck_snapshot("B"),
+    }
+}
+
+fn empty_deck_snapshot(id: &'static str) -> DeckSnapshot {
+    DeckSnapshot {
+        id,
+        state: "idle",
+        loaded_path: None,
+        channel_volume: 1.0,
+        effective_volume: 1.0,
+        tempo_range_percent: 6,
+        tempo_adjust: 0.0,
+        playback_speed: 1.0,
+        position_sec: 0.0,
+        duration_sec: None,
+    }
+}
+
+/// 文字列からデッキ ID を解析する（UI との境界で使用）。
+pub fn parse_deck(s: &str) -> Result<DeckId, String> {
+    match s {
+        "A" | "a" => Ok(DeckId::A),
+        "B" | "b" => Ok(DeckId::B),
+        _ => {
+            warn!(?s, "invalid deck id");
+            Err(format!("invalid deck id: {s}"))
+        }
+    }
+}
+
+/// 整数パーセンテージから TempoRange を解析する。
+pub fn parse_tempo_range(percent: u8) -> Result<TempoRange, String> {
+    match percent {
+        6 => Ok(TempoRange::Six),
+        10 => Ok(TempoRange::Ten),
+        16 => Ok(TempoRange::Sixteen),
+        other => Err(format!("invalid tempo range: {other}% (expected 6/10/16)")),
+    }
+}

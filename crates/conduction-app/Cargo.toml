@@ -8,10 +8,23 @@ authors.workspace = true
 repository.workspace = true
 description = "Tauri application entry point for Conduction."
 
+[lib]
+name = "conduction_app"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "conduction"
+path = "src/main.rs"
+
 [features]
 default = ["claude-analysis"]
 claude-analysis = ["conduction-claude/claude-analysis"]
 yt-download = ["conduction-download/yt-download"]
+# Tauri custom-protocol (production build only)
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 conduction-core.workspace = true
@@ -22,10 +35,17 @@ conduction-library.workspace = true
 conduction-claude.workspace = true
 conduction-download.workspace = true
 conduction-script.workspace = true
+
+tauri = { version = "2.0", features = [] }
+tauri-plugin-dialog = "2.0"
+
 serde.workspace = true
 serde_json.workspace = true
+parking_lot.workspace = true
+crossbeam.workspace = true
+arc-swap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 anyhow.workspace = true
-# tauri本体はPhase 2で追加
+thiserror.workspace = true
