@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "tauri": "tauri"
+    "tauri": "tauri --config ../crates/conduction-app/tauri.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.0",
