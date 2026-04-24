@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { DeckId, MixerSnapshot } from "@/types/mixer";
+import type { TrackSummary } from "@/types/track";
 
 export const ipc = {
+  // --- Mixer / Deck ---
   loadTrack(deck: DeckId, path: string) {
     return invoke<void>("load_track", { deck, path });
   },
@@ -32,5 +34,16 @@ export const ipc = {
   },
   getStatus() {
     return invoke<MixerSnapshot>("get_status");
+  },
+
+  // --- Library ---
+  importTrack(path: string) {
+    return invoke<TrackSummary>("import_track", { path });
+  },
+  listTracks() {
+    return invoke<TrackSummary[]>("list_tracks");
+  },
+  deleteTrack(id: string) {
+    return invoke<void>("delete_track", { id });
   },
 };

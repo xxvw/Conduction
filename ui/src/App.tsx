@@ -1,51 +1,74 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import "./App.css";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
 import { ipc } from "@/lib/ipc";
-import type { DeckId, DeckSnapshot } from "@/types/mixer";
+import { LibraryScreen } from "@/screens/LibraryScreen";
+import type { DeckId, DeckSnapshot, MixerSnapshot } from "@/types/mixer";
+
+type Screen = "mix" | "library";
 
 const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 
 export function App() {
+  const [screen, setScreen] = useState<Screen>("mix");
   const status = useMixerStatus(100);
+
+  const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
+    void ipc.loadTrack(deck, path);
+    setScreen("mix");
+  }, []);
 
   return (
     <div className="app">
       <header className="topbar">
         <span className="brand">Conduction</span>
-        <span className="brand-sub">Conduct your mix</span>
+        <nav className="nav">
+          <button
+            className="nav-btn"
+            data-active={screen === "mix"}
+            onClick={() => setScreen("mix")}
+          >
+            Mix
+          </button>
+          <button
+            className="nav-btn"
+            data-active={screen === "library"}
+            onClick={() => setScreen("library")}
+          >
+            Library
+          </button>
+        </nav>
         <div className="spacer" />
         <MasterSlim volume={status?.master_volume ?? 1.0} />
       </header>
 
-      <main className="main">
-        {status ? (
-          <>
-            <DeckPanel snapshot={status.deck_a} />
-            <DeckPanel snapshot={status.deck_b} />
-            <BusPanel crossfader={status.crossfader} master={status.master_volume} />
-          </>
+      <main className={screen === "mix" ? "main main-mix" : "main main-library"}>
+        {screen === "mix" ? (
+          <MixScreen status={status} />
         ) : (
-          <p className="hint">audio engine connecting…</p>
+          <LibraryScreen onLoadToDeck={handleLoadToDeck} />
         )}
       </main>
     </div>
   );
 }
 
+function MixScreen({ status }: { status: MixerSnapshot | null }) {
+  if (!status) return <p className="hint">audio engine connecting…</p>;
+  return (
+    <>
+      <DeckPanel snapshot={status.deck_a} />
+      <DeckPanel snapshot={status.deck_b} />
+      <BusPanel crossfader={status.crossfader} master={status.master_volume} />
+    </>
+  );
+}
+
 function MasterSlim({ volume }: { volume: number }) {
   return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--s-3)",
-        fontSize: "var(--fs-small)",
-        color: "var(--c-ink-9)",
-      }}
-    >
+    <label className="master-slim">
       MASTER
       <input
         type="range"
@@ -54,19 +77,8 @@ function MasterSlim({ volume }: { volume: number }) {
         step={0.01}
         value={volume}
         onChange={(e) => ipc.setMasterVolume(parseFloat(e.target.value))}
-        style={{ width: 140 }}
       />
-      <span
-        className="value"
-        style={{
-          fontFamily: "var(--font-mono)",
-          color: "var(--c-ink-11)",
-          minWidth: 48,
-          textAlign: "right",
-        }}
-      >
-        {volume.toFixed(2)}
-      </span>
+      <span className="value">{volume.toFixed(2)}</span>
     </label>
   );
 }
@@ -136,11 +148,7 @@ function DeckPanel({ snapshot }: { snapshot: DeckSnapshot }) {
         >
           {snapshot.state === "play" ? "Pause" : "Play"}
         </button>
-        <button
-          className="btn"
-          onClick={() => ipc.stop(deck)}
-          disabled={!canPlay}
-        >
+        <button className="btn" onClick={() => ipc.stop(deck)} disabled={!canPlay}>
           Stop
         </button>
         <span className="pos">

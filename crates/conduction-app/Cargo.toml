@@ -32,6 +32,7 @@ conduction-audio.workspace = true
 conduction-analysis.workspace = true
 conduction-conductor.workspace = true
 conduction-library.workspace = true
+uuid.workspace = true
 conduction-claude.workspace = true
 conduction-download.workspace = true
 conduction-script.workspace = true

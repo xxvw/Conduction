@@ -6,6 +6,7 @@
 
 pub mod audio_engine;
 pub mod commands;
+pub mod library_state;
 
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -15,11 +16,13 @@ pub fn run() {
     init_tracing();
 
     let audio = audio_engine::spawn().expect("audio engine must start");
+    let library = library_state::LibraryHandle::open_default().expect("library must open");
     info!("conduction-app booting");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(audio)
+        .manage(library)
         .invoke_handler(tauri::generate_handler![
             commands::load_track,
             commands::play,
@@ -31,6 +34,9 @@ pub fn run() {
             commands::set_tempo_adjust,
             commands::set_tempo_range,
             commands::get_status,
+            commands::import_track,
+            commands::list_tracks,
+            commands::delete_track,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
