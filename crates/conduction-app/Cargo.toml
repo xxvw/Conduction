@@ -43,6 +43,8 @@ sysinfo = "0.32"
 
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
+directories.workspace = true
 parking_lot.workspace = true
 crossbeam.workspace = true
 arc-swap.workspace = true

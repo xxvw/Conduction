@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
 use crate::library_state::{LibraryHandle, TrackSummary};
+use crate::settings::{AppSettings, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
 
 type CmdResult<T = ()> = Result<T, String>;
@@ -315,6 +316,21 @@ impl From<&Beat> for BeatDto {
 #[tauri::command]
 pub fn get_resource_stats(stats: State<'_, SystemStatsHandle>) -> ResourceStats {
     stats.snapshot()
+}
+
+// ======== Settings ========
+
+#[tauri::command]
+pub fn get_settings(settings: State<'_, SettingsHandle>) -> AppSettings {
+    settings.get()
+}
+
+#[tauri::command]
+pub fn save_settings(
+    settings: State<'_, SettingsHandle>,
+    new_settings: AppSettings,
+) -> Result<(), String> {
+    settings.set(new_settings).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

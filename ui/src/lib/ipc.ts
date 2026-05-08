@@ -81,10 +81,28 @@ export const ipc = {
   getResourceStats() {
     return call<ResourceStats>("get_resource_stats");
   },
+
+  // --- Settings (TOML on disk) ---
+  getSettings() {
+    return call<AppSettings>("get_settings");
+  },
+  saveSettings(settings: AppSettings) {
+    return call<void>("save_settings", { newSettings: settings });
+  },
 };
 
 export interface ResourceStats {
   cpu_percent: number;
   memory_mb: number;
   logical_cores: number;
+}
+
+export interface KeybindingEntry {
+  action: string;
+  key: string;
+  label: string;
+}
+
+export interface AppSettings {
+  keybindings: KeybindingEntry[];
 }
