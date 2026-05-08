@@ -21,11 +21,13 @@ export function SettingsScreen({ bindings, setBinding, reset }: SettingsScreenPr
   const [tab, setTab] = useState<SettingsTab>("general");
 
   return (
-    <section className="settings-screen">
-      <header className="settings-header">
-        <h2>Settings</h2>
-        <p className="settings-subtitle">Conductionの操作をカスタマイズ.</p>
-      </header>
+    <section className="settings-screen" data-tab={tab}>
+      {tab !== "api" && (
+        <header className="settings-header">
+          <h2>Settings</h2>
+          <p className="settings-subtitle">Conductionの操作をカスタマイズ.</p>
+        </header>
+      )}
 
       <div className="settings-layout">
         <aside className="settings-tabs" role="tablist" aria-label="Settings tabs">
@@ -111,46 +113,14 @@ function GeneralTab({ bindings, setBinding, reset }: SettingsScreenProps) {
 }
 
 function ApiDocsTab() {
-  const [healthy, setHealthy] = useState<"unknown" | "ok" | "down">("unknown");
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${HTTP_API_BASE}/api/health`)
-      .then((r) => (r.ok ? "ok" : "down"))
-      .catch(() => "down" as const)
-      .then((s) => {
-        if (!cancelled) setHealthy(s);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
-    <section className="settings-section api-docs-section">
-      <div className="settings-section-header">
-        <h3>Local Web API</h3>
-        <span className="api-status" data-status={healthy}>
-          {healthy === "ok" ? "● online" : healthy === "down" ? "● offline" : "○ checking…"}
-        </span>
-      </div>
-      <p className="hint">
-        Conduction は起動時に <code>{HTTP_API_BASE}</code> で REST API を公開しています。
-        ローカルバインドのみ・認証なし。スクリプトや外部ツールから全パラメータを操作できます。
-      </p>
-      <p className="hint">
-        例: <code>curl -X POST {HTTP_API_BASE}/api/decks/A/play</code>
-        {" / "}
-        <code>curl {HTTP_API_BASE}/api/status</code>
-      </p>
-      <div className="api-docs-frame">
-        <iframe
-          title="Conduction API documentation"
-          src={`${HTTP_API_BASE}/swagger-ui/`}
-          className="api-docs-iframe"
-        />
-      </div>
-    </section>
+    <div className="api-docs-fullscreen">
+      <iframe
+        title="Conduction API documentation"
+        src={`${HTTP_API_BASE}/swagger-ui/`}
+        className="api-docs-iframe-fullscreen"
+      />
+    </div>
   );
 }
 
