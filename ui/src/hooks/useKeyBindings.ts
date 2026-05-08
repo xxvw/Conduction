@@ -28,14 +28,7 @@ export function useKeyBindings() {
         const settings = await ipc.getSettings();
         if (cancelled) return;
         if (settings.keybindings && settings.keybindings.length > 0) {
-          // 保存された key で DEFAULT_BINDINGS を上書き（label は常にコード側を採用）
-          const merged = DEFAULT_BINDINGS.map((d) => {
-            const found = settings.keybindings.find((p) => p.action === d.action);
-            if (found && typeof found.key === "string" && found.key.length > 0) {
-              return { ...d, key: found.key };
-            }
-            return d;
-          });
+          const merged = mergeWithDefaults(settings.keybindings);
           setBindings(merged);
         }
       } catch (e) {
@@ -78,4 +71,43 @@ export function useKeyBindings() {
   }, [persist]);
 
   return { bindings, setBinding, reset };
+}
+
+/**
+ * 保存済み bindings を DEFAULT_BINDINGS に重ねる。
+ *
+ * 過去のスキーマ（例: 旧 'focus-deck-a' に "1" が割り当てられていた状態）を
+ * 引きずって新しい DEFAULT_BINDINGS と key が衝突しないよう、結果に重複が
+ * 残ったらデフォルトと違うエントリ側をデフォルトに戻す。これによって設定
+ * ファイルが古いまま残っても新規アクションの初期キー（hotcue-1=1 など）が
+ * 黙って奪われない。
+ */
+function mergeWithDefaults(
+  saved: { action: string; key: string }[],
+): ShortcutBinding[] {
+  const merged = DEFAULT_BINDINGS.map((d) => {
+    const found = saved.find((p) => p.action === d.action);
+    if (found && typeof found.key === "string" && found.key.length > 0) {
+      return { ...d, key: found.key };
+    }
+    return d;
+  });
+
+  // key の重複を数える（case insensitive）
+  const norm = (k: string) => (k.length === 1 ? k.toLowerCase() : k);
+  const counts = new Map<string, number>();
+  for (const b of merged) {
+    const k = norm(b.key);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+
+  // 重複している binding のうち、デフォルトと違う key を持つものを default に戻す。
+  // デフォルトと一致する側は守られる。
+  return merged.map((b, i) => {
+    const k = norm(b.key);
+    if ((counts.get(k) ?? 0) > 1 && b.key !== DEFAULT_BINDINGS[i]!.key) {
+      return { ...b, key: DEFAULT_BINDINGS[i]!.key };
+    }
+    return b;
+  });
 }
