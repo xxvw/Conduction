@@ -21,6 +21,10 @@ use tracing::{info, warn};
 #[serde(default)]
 pub struct AppSettings {
     pub keybindings: Vec<KeybindingEntry>,
+    /// Main 出力デバイス名（cpal）。`None` の時は OS のデフォルトを使う。
+    pub audio_main_output: Option<String>,
+    /// Cue 出力デバイス名（cpal）。`None` の時は Cue 出力を使わない。
+    pub audio_cue_output: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

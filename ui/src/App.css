@@ -680,6 +680,57 @@
   color: var(--c-warning);
   font-family: var(--font-mono);
 }
+
+/* --- Audio output (Settings) --- */
+.audio-device-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s-2);
+}
+.audio-device-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 320px);
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-3);
+}
+.audio-device-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.audio-device-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--c-accent);
+}
+.audio-device-desc {
+  font-size: var(--fs-small);
+  color: var(--c-ink-9);
+}
+.audio-device-select {
+  background: var(--c-ink-2);
+  color: var(--c-ink-11);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  padding: var(--s-2) var(--s-3);
+  font-family: var(--font-sans);
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.audio-device-select:focus {
+  outline: none;
+  border-color: var(--c-accent);
+}
+.audio-device-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .deck-status-row {
   display: flex;
   align-items: center;

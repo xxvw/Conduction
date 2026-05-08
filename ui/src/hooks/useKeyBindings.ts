@@ -44,13 +44,22 @@ export function useKeyBindings() {
 
   const persist = useCallback((next: ShortcutBinding[]) => {
     if (!loadedRef.current) return;
-    void ipc.saveSettings({
-      keybindings: next.map((b) => ({
-        action: b.action,
-        key: b.key,
-        label: b.label,
-      })),
-    });
+    // 他のフィールド（audio device 等）を上書きしないよう、現在の設定を fetch して merge。
+    void (async () => {
+      try {
+        const current = await ipc.getSettings();
+        await ipc.saveSettings({
+          ...current,
+          keybindings: next.map((b) => ({
+            action: b.action,
+            key: b.key,
+            label: b.label,
+          })),
+        });
+      } catch (e) {
+        console.warn("failed to persist keybindings:", e);
+      }
+    })();
   }, []);
 
   const setBinding = useCallback(

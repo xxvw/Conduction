@@ -17,10 +17,11 @@ use tracing_subscriber::{fmt, EnvFilter};
 pub fn run() {
     init_tracing();
 
-    let audio = audio_engine::spawn().expect("audio engine must start");
+    let settings = settings::SettingsHandle::open_default().expect("settings must open");
+    let main_device_name = settings.get().audio_main_output.clone();
+    let audio = audio_engine::spawn(main_device_name).expect("audio engine must start");
     let library = library_state::LibraryHandle::open_default().expect("library must open");
     let stats = system_stats::SystemStatsHandle::new();
-    let settings = settings::SettingsHandle::open_default().expect("settings must open");
     info!("conduction-app booting");
 
     tauri::Builder::default()
@@ -43,6 +44,7 @@ pub fn run() {
             commands::set_filter,
             commands::set_echo,
             commands::set_reverb,
+            commands::list_audio_devices,
             commands::set_crossfader,
             commands::set_channel_volume,
             commands::set_master_volume,

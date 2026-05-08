@@ -6,6 +6,7 @@ use std::sync::Arc;
 use conduction_analysis::{
     decode_to_pcm, estimate_beatgrid, generate_waveform, WaveformPreview, DEFAULT_WAVEFORM_BINS,
 };
+use conduction_audio::OutputDevice;
 use conduction_core::Beat;
 use serde::Serialize;
 use conduction_core::TrackId;
@@ -397,6 +398,13 @@ impl From<&Beat> for BeatDto {
 #[tauri::command]
 pub fn get_resource_stats(stats: State<'_, SystemStatsHandle>) -> ResourceStats {
     stats.snapshot()
+}
+
+// ======== Audio devices ========
+
+#[tauri::command]
+pub fn list_audio_devices() -> Vec<String> {
+    OutputDevice::list_available()
 }
 
 // ======== Settings ========

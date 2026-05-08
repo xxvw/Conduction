@@ -114,6 +114,9 @@ export const ipc = {
   saveSettings(settings: AppSettings) {
     return call<void>("save_settings", { newSettings: settings });
   },
+  listAudioDevices() {
+    return call<string[]>("list_audio_devices");
+  },
 
   // --- Hot Cues ---
   listHotCues(trackId: string) {
@@ -141,4 +144,6 @@ export interface KeybindingEntry {
 
 export interface AppSettings {
   keybindings: KeybindingEntry[];
+  audio_main_output: string | null;
+  audio_cue_output: string | null;
 }

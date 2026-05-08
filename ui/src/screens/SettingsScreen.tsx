@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useAudioSettings } from "@/hooks/useAudioSettings";
 import {
   displayKey,
   type ShortcutAction,
@@ -29,6 +30,8 @@ export function SettingsScreen({ bindings, setBinding, reset }: SettingsScreenPr
         <p className="settings-subtitle">Conductionの操作をカスタマイズ.</p>
       </header>
 
+      <AudioOutputSection />
+
       <section className="settings-section">
         <div className="settings-section-header">
           <h3>Keyboard shortcuts</h3>
@@ -57,6 +60,86 @@ export function SettingsScreen({ bindings, setBinding, reset }: SettingsScreenPr
         </p>
       </section>
     </section>
+  );
+}
+
+function AudioOutputSection() {
+  const { state, setMain, setCue } = useAudioSettings();
+  return (
+    <section className="settings-section">
+      <div className="settings-section-header">
+        <h3>Audio output</h3>
+      </div>
+      <p className="hint">
+        変更を反映するにはアプリを再起動してください。
+      </p>
+      <div className="audio-device-grid">
+        <DeviceSelect
+          label="MAIN"
+          description="観客に流す主出力"
+          value={state.mainOutput}
+          devices={state.devices}
+          loading={state.loading}
+          allowNone={false}
+          onChange={(v) => void setMain(v)}
+        />
+        <DeviceSelect
+          label="CUE"
+          description="ヘッドホン用モニタリング (PFL)"
+          value={state.cueOutput}
+          devices={state.devices}
+          loading={state.loading}
+          allowNone={true}
+          onChange={(v) => void setCue(v)}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DeviceSelect({
+  label,
+  description,
+  value,
+  devices,
+  loading,
+  allowNone,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  value: string | null;
+  devices: string[];
+  loading: boolean;
+  allowNone: boolean;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div className="audio-device-row">
+      <div className="audio-device-meta">
+        <span className="audio-device-label">{label}</span>
+        <span className="audio-device-desc">{description}</span>
+      </div>
+      <select
+        className="audio-device-select"
+        value={value ?? ""}
+        disabled={loading || devices.length === 0}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "" ? null : v);
+        }}
+      >
+        {allowNone && <option value="">— Off (no Cue output) —</option>}
+        {!allowNone && value == null && (
+          <option value="">— System default —</option>
+        )}
+        {devices.map((d) => (
+          <option key={d} value={d}>
+            {d}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

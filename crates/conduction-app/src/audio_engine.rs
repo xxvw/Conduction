@@ -95,7 +95,10 @@ impl AudioHandle {
 }
 
 /// audio スレッドを起動してハンドルを返す。
-pub fn spawn() -> anyhow::Result<AudioHandle> {
+///
+/// `main_device_name` で Main 出力デバイスを指定する。`None` ならデフォルト。
+/// 名前指定でオープンに失敗した場合はデフォルトデバイスにフォールバックする。
+pub fn spawn(main_device_name: Option<String>) -> anyhow::Result<AudioHandle> {
     let (tx, rx) = channel::unbounded::<AudioCommand>();
     let initial = empty_snapshot();
     let snapshot = Arc::new(ArcSwap::from_pointee(initial));
@@ -106,10 +109,10 @@ pub fn spawn() -> anyhow::Result<AudioHandle> {
     thread::Builder::new()
         .name("audio-engine".into())
         .spawn(move || {
-            let device = match OutputDevice::open_default() {
+            let device = match open_main_device(main_device_name.as_deref()) {
                 Ok(d) => d,
                 Err(e) => {
-                    let _ = ready_tx.send(Err(e.into()));
+                    let _ = ready_tx.send(Err(e));
                     return;
                 }
             };
@@ -296,6 +299,18 @@ fn deck_label(id: DeckId) -> &'static str {
         DeckId::A => "A",
         DeckId::B => "B",
     }
+}
+
+fn open_main_device(name: Option<&str>) -> anyhow::Result<OutputDevice> {
+    if let Some(n) = name {
+        match OutputDevice::open_by_name(n) {
+            Ok(d) => return Ok(d),
+            Err(e) => {
+                warn!(device = %n, error = %e, "failed to open named device, falling back to default");
+            }
+        }
+    }
+    Ok(OutputDevice::open_default()?)
 }
 
 fn empty_snapshot() -> MixerSnapshot {
