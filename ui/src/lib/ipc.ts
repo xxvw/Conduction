@@ -63,6 +63,9 @@ export const ipc = {
   setReverb(deck: DeckId, wet: number, room: number) {
     return call<void>("set_reverb", { deck, wet, room });
   },
+  setCueSend(deck: DeckId, value: number) {
+    return call<void>("set_cue_send", { deck, value });
+  },
   setCrossfader(position: number) {
     return call<void>("set_crossfader", { position });
   },

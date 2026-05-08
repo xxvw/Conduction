@@ -855,6 +855,35 @@ input[type="range"] {
   color: var(--c-warning);
 }
 
+/* --- CUE button (PFL toggle) --- */
+.cue-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding: 2px var(--s-3);
+  background: var(--c-ink-3);
+  color: var(--c-ink-9);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition: all 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.cue-btn:hover:not(:disabled) {
+  border-color: var(--c-cue, #E8B868);
+  color: var(--c-cue, #E8B868);
+}
+.cue-btn[data-active="true"] {
+  background: var(--c-cue, #E8B868);
+  color: var(--c-ink-0);
+  border-color: var(--c-cue, #E8B868);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-cue, #E8B868) 35%, transparent);
+}
+.cue-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .hint {
   color: var(--c-ink-9);
   font-size: var(--fs-small);

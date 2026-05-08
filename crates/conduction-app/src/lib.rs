@@ -19,7 +19,9 @@ pub fn run() {
 
     let settings = settings::SettingsHandle::open_default().expect("settings must open");
     let main_device_name = settings.get().audio_main_output.clone();
-    let audio = audio_engine::spawn(main_device_name).expect("audio engine must start");
+    let cue_device_name = settings.get().audio_cue_output.clone();
+    let audio = audio_engine::spawn(main_device_name, cue_device_name)
+        .expect("audio engine must start");
     let library = library_state::LibraryHandle::open_default().expect("library must open");
     let stats = system_stats::SystemStatsHandle::new();
     info!("conduction-app booting");
@@ -44,6 +46,7 @@ pub fn run() {
             commands::set_filter,
             commands::set_echo,
             commands::set_reverb,
+            commands::set_cue_send,
             commands::list_audio_devices,
             commands::set_crossfader,
             commands::set_channel_volume,

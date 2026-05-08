@@ -65,9 +65,16 @@ impl Default for TempoRange {
 ///
 /// `Deck` は自身の `Sink` を通じて独立に再生制御を行う。
 /// 観客用（Main）出力への合流・クロスフェーダーの適用は `Mixer` が担当する。
+///
+/// PFL 用途で Cue 出力デバイスが提供された場合、もう 1 本の `Sink` を Cue
+/// デバイス側に作り、同じソースから別 Decoder を流す（rodio の Sink は
+/// ストリームを 1 つしか消費できないため、ファイルを再オープンして 2 本
+/// 並行で流す）。
 pub struct Deck {
     id: DeckId,
     sink: Sink,
+    /// PFL 用の Cue 出力 Sink（Cue デバイスがオープン済みの時のみ存在）。
+    sink_cue: Option<Sink>,
 
     duration: Option<Duration>,
 
@@ -96,6 +103,10 @@ pub struct Deck {
 
     // --- DSP（EQ / Filter / Echo / Reverb） ---
     dsp_params: Arc<DspParams>,
+
+    /// PFL 送出量（0..1）。1 で Cue デバイスへ流れ、0 で送らない。
+    /// Cue 出力デバイスが無い場合は値を保持するだけで何も起きない。
+    cue_send: f32,
 }
 
 /// `Deck` のループ状態。`start` / `end` は `None` 時は未設定。
@@ -109,14 +120,29 @@ pub struct LoopState {
 
 impl Deck {
     /// 空のデッキを作る。曲は `load` 後に再生可能。
-    pub fn new(id: DeckId, device: &OutputDevice) -> AudioResult<Self> {
+    /// `cue` は PFL 出力先（None の時はモノラル Main 構成）。
+    pub fn new(
+        id: DeckId,
+        device: &OutputDevice,
+        cue_device: Option<&OutputDevice>,
+    ) -> AudioResult<Self> {
         let sink =
             Sink::try_new(device.handle()).map_err(|e| AudioError::Stream(e.to_string()))?;
         sink.pause();
         sink.set_volume(1.0);
+        let sink_cue = match cue_device {
+            Some(d) => {
+                let s = Sink::try_new(d.handle()).map_err(|e| AudioError::Stream(e.to_string()))?;
+                s.pause();
+                s.set_volume(0.0); // 初期 PFL は OFF
+                Some(s)
+            }
+            None => None,
+        };
         Ok(Self {
             id,
             sink,
+            sink_cue,
             duration: None,
             started_at: None,
             paused_accum: Duration::ZERO,
@@ -128,6 +154,7 @@ impl Deck {
             position_offset: Duration::ZERO,
             loop_state: LoopState::default(),
             dsp_params: DspParams::new_arc(),
+            cue_send: 0.0,
         })
     }
 
@@ -141,7 +168,13 @@ impl Deck {
     }
 
     /// 音源ファイルをロードする。既存の再生は停止される。
-    pub fn load(&mut self, device: &OutputDevice, path: &Path) -> AudioResult<()> {
+    /// Cue 出力が有効な場合、同じファイルから別 Decoder を作って Cue Sink にも append する。
+    pub fn load(
+        &mut self,
+        device: &OutputDevice,
+        cue_device: Option<&OutputDevice>,
+        path: &Path,
+    ) -> AudioResult<()> {
         let file = File::open(path).map_err(|source| AudioError::FileOpen {
             path: path.to_path_buf(),
             source,
@@ -162,6 +195,29 @@ impl Deck {
         let with_dsp = DjEffectSource::new(f32_source, self.dsp_params.clone());
         self.sink.append(with_dsp);
 
+        // Cue 側: ファイルを再オープンして独立した Decoder + DSP で並行ストリーム化
+        if let Some(cue_dev) = cue_device {
+            let file_cue =
+                File::open(path).map_err(|source| AudioError::FileOpen {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
+            let decoder_cue = Decoder::new(BufReader::new(file_cue))
+                .map_err(|e| AudioError::Decode(e.to_string()))?;
+            if let Some(s) = self.sink_cue.take() {
+                s.stop();
+            }
+            let sc =
+                Sink::try_new(cue_dev.handle()).map_err(|e| AudioError::Stream(e.to_string()))?;
+            sc.pause();
+            sc.set_volume(self.cue_send);
+            sc.set_speed(self.playback_speed());
+            let f32_cue = decoder_cue.convert_samples::<f32>();
+            let dsp_cue = DjEffectSource::new(f32_cue, self.dsp_params.clone());
+            sc.append(dsp_cue);
+            self.sink_cue = Some(sc);
+        }
+
         self.started_at = None;
         self.paused_accum = Duration::ZERO;
         self.paused_at = None;
@@ -171,6 +227,7 @@ impl Deck {
             deck = ?self.id,
             path = %path.display(),
             duration = ?self.duration,
+            cue = cue_device.is_some(),
             "track loaded",
         );
         Ok(())
@@ -186,6 +243,9 @@ impl Deck {
             (Some(_), None) => {}
         }
         self.sink.play();
+        if let Some(s) = &self.sink_cue {
+            s.play();
+        }
     }
 
     pub fn pause(&mut self) {
@@ -194,10 +254,16 @@ impl Deck {
         }
         self.paused_at = Some(Instant::now());
         self.sink.pause();
+        if let Some(s) = &self.sink_cue {
+            s.pause();
+        }
     }
 
     pub fn stop(&mut self) {
         self.sink.stop();
+        if let Some(s) = &self.sink_cue {
+            s.stop();
+        }
         self.started_at = None;
         self.paused_accum = Duration::ZERO;
         self.paused_at = None;
@@ -205,11 +271,17 @@ impl Deck {
     }
 
     /// 再生位置を指定秒に移動する。Sink::try_seek が成功した場合のみ
-    /// 内部の position 計算もリセットする。
+    /// 内部の position 計算もリセットする。Cue Sink にも同期して適用。
     pub fn seek(&mut self, position: Duration) -> AudioResult<()> {
         self.sink
             .try_seek(position)
             .map_err(|e| AudioError::Playback(format!("seek failed: {e}")))?;
+        if let Some(s) = &self.sink_cue {
+            // Cue 側の seek 失敗は致命的ではない（Main は動く）。warn にとどめて続行。
+            if let Err(e) = s.try_seek(position) {
+                tracing::warn!(?e, "cue sink seek failed; ignoring");
+            }
+        }
         self.started_at = Some(Instant::now());
         self.paused_accum = Duration::ZERO;
         self.paused_at = if self.sink.is_paused() {
@@ -299,7 +371,29 @@ impl Deck {
     }
 
     fn apply_speed(&mut self) {
-        self.sink.set_speed(self.playback_speed());
+        let speed = self.playback_speed();
+        self.sink.set_speed(speed);
+        if let Some(s) = &self.sink_cue {
+            s.set_speed(speed);
+        }
+    }
+
+    // --- PFL (Cue send) ---
+
+    pub fn cue_send(&self) -> f32 {
+        self.cue_send
+    }
+
+    pub fn has_cue_output(&self) -> bool {
+        self.sink_cue.is_some()
+    }
+
+    pub fn set_cue_send(&mut self, value: f32) {
+        let v = value.clamp(0.0, 1.0);
+        self.cue_send = v;
+        if let Some(s) = &self.sink_cue {
+            s.set_volume(v);
+        }
     }
 
     // --- ループ ---

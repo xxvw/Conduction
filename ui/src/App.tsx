@@ -449,6 +449,22 @@ function DeckPanel({
             <span className="state-badge" data-state={snapshot.state}>
               {snapshot.state}
             </span>
+            <button
+              className="cue-btn"
+              data-active={snapshot.cue_send > 0.5 || undefined}
+              data-disabled={!snapshot.has_cue_output || undefined}
+              disabled={!snapshot.has_cue_output}
+              title={
+                snapshot.has_cue_output
+                  ? "PFL: Send this deck to Cue (headphone)"
+                  : "Cue output not configured (Settings → Audio output → CUE)"
+              }
+              onClick={() =>
+                void ipc.setCueSend(deck, snapshot.cue_send > 0.5 ? 0 : 1)
+              }
+            >
+              CUE
+            </button>
             {baseBpm > 0 && (
               <span className="deck-bpm-readout" data-id={deck}>
                 <span className="deck-bpm-value">{effectiveBpm.toFixed(2)}</span>

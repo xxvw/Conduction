@@ -43,9 +43,9 @@ pub struct Mixer {
 }
 
 impl Mixer {
-    pub fn new(device: &OutputDevice) -> AudioResult<Self> {
-        let deck_a = Deck::new(DeckId::A, device)?;
-        let deck_b = Deck::new(DeckId::B, device)?;
+    pub fn new(device: &OutputDevice, cue_device: Option<&OutputDevice>) -> AudioResult<Self> {
+        let deck_a = Deck::new(DeckId::A, device, cue_device)?;
+        let deck_b = Deck::new(DeckId::B, device, cue_device)?;
         let mut mixer = Self {
             deck_a,
             deck_b,
@@ -55,6 +55,10 @@ impl Mixer {
         };
         mixer.recompute();
         Ok(mixer)
+    }
+
+    pub fn set_cue_send(&mut self, id: DeckId, value: f32) {
+        self.deck(id).set_cue_send(value);
     }
 
     pub fn deck_a(&mut self) -> &mut Deck {

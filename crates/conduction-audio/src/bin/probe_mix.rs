@@ -34,10 +34,10 @@ fn main() -> anyhow::Result<()> {
     let path_b = PathBuf::from(path_b);
 
     let device = OutputDevice::open_default()?;
-    let mut mixer = Mixer::new(&device)?;
+    let mut mixer = Mixer::new(&device, None)?;
 
-    mixer.deck_a().load(&device, &path_a)?;
-    mixer.deck_b().load(&device, &path_b)?;
+    mixer.deck_a().load(&device, None, &path_a)?;
+    mixer.deck_b().load(&device, None, &path_b)?;
 
     // 初期: Deck A 側に振り切り、両チャンネルボリュームは 1.0
     mixer.set_crossfader(-1.0);

@@ -27,11 +27,11 @@ fn main() -> anyhow::Result<()> {
 
     let device = OutputDevice::open_default()?;
     // 単一デッキ用途だが、Mixer 経由のほうが実効ボリューム計算を統一できる。
-    let mut mixer = Mixer::new(&device)?;
+    let mut mixer = Mixer::new(&device, None)?;
     mixer.set_channel_volume(DeckId::A, volume);
 
     let deck_a: &mut Deck = mixer.deck_a();
-    deck_a.load(&device, &path)?;
+    deck_a.load(&device, None, &path)?;
     deck_a.play();
 
     println!("[probe] playing: {}", path.display());

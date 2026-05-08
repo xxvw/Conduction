@@ -38,6 +38,7 @@ pub enum AudioCommand {
     SetFilter { deck: DeckId, value: f32 },
     SetEcho { deck: DeckId, wet: f32, time_ms: f32, feedback: f32 },
     SetReverb { deck: DeckId, wet: f32, room: f32 },
+    SetCueSend { deck: DeckId, value: f32 },
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -65,6 +66,8 @@ pub struct DeckSnapshot {
     pub echo_feedback: f32,
     pub reverb_wet: f32,
     pub reverb_room: f32,
+    pub cue_send: f32,
+    pub has_cue_output: bool,
 }
 
 /// Mixer 全体のスナップショット。
@@ -97,8 +100,13 @@ impl AudioHandle {
 /// audio スレッドを起動してハンドルを返す。
 ///
 /// `main_device_name` で Main 出力デバイスを指定する。`None` ならデフォルト。
-/// 名前指定でオープンに失敗した場合はデフォルトデバイスにフォールバックする。
-pub fn spawn(main_device_name: Option<String>) -> anyhow::Result<AudioHandle> {
+/// `cue_device_name` で Cue 出力デバイスを指定する。`None` で Cue 出力なし。
+/// 名前指定でオープンに失敗した場合は warning を出してフォールバック（Main は
+/// デフォルトデバイス、Cue は無効）。
+pub fn spawn(
+    main_device_name: Option<String>,
+    cue_device_name: Option<String>,
+) -> anyhow::Result<AudioHandle> {
     let (tx, rx) = channel::unbounded::<AudioCommand>();
     let initial = empty_snapshot();
     let snapshot = Arc::new(ArcSwap::from_pointee(initial));
@@ -116,7 +124,8 @@ pub fn spawn(main_device_name: Option<String>) -> anyhow::Result<AudioHandle> {
                     return;
                 }
             };
-            let mut mixer = match Mixer::new(&device) {
+            let cue_device = open_cue_device(cue_device_name.as_deref());
+            let mut mixer = match Mixer::new(&device, cue_device.as_ref()) {
                 Ok(m) => m,
                 Err(e) => {
                     let _ = ready_tx.send(Err(e.into()));
@@ -130,7 +139,7 @@ pub fn spawn(main_device_name: Option<String>) -> anyhow::Result<AudioHandle> {
 
             loop {
                 while let Ok(cmd) = rx.try_recv() {
-                    apply_command(&device, &mut mixer, &mut deck_paths, cmd);
+                    apply_command(&device, cue_device.as_ref(), &mut mixer, &mut deck_paths, cmd);
                 }
                 // 各デッキのループ判定。end 到達なら start にシークする。
                 if let Err(e) = mixer.deck_a().process_loop() {
@@ -156,18 +165,21 @@ pub fn spawn(main_device_name: Option<String>) -> anyhow::Result<AudioHandle> {
 
 fn apply_command(
     device: &OutputDevice,
+    cue_device: Option<&OutputDevice>,
     mixer: &mut Mixer,
     paths: &mut [Option<PathBuf>; 2],
     cmd: AudioCommand,
 ) {
     match cmd {
-        AudioCommand::Load { deck, path } => match mixer.deck(deck).load(device, &path) {
-            Ok(()) => paths[deck_idx(deck)] = Some(path),
-            Err(e) => {
-                error!(?e, ?deck, "load failed");
-                paths[deck_idx(deck)] = None;
+        AudioCommand::Load { deck, path } => {
+            match mixer.deck(deck).load(device, cue_device, &path) {
+                Ok(()) => paths[deck_idx(deck)] = Some(path),
+                Err(e) => {
+                    error!(?e, ?deck, "load failed");
+                    paths[deck_idx(deck)] = None;
+                }
             }
-        },
+        }
         AudioCommand::Play(deck) => mixer.deck(deck).play(),
         AudioCommand::Pause(deck) => mixer.deck(deck).pause(),
         AudioCommand::Stop(deck) => mixer.deck(deck).stop(),
@@ -227,6 +239,9 @@ fn apply_command(
             p.set_reverb_wet(wet);
             p.set_reverb_room(room);
         }
+        AudioCommand::SetCueSend { deck, value } => {
+            mixer.set_cue_send(deck, value);
+        }
     }
 }
 
@@ -278,6 +293,8 @@ fn build_deck_snapshot(
         echo_feedback: dsp.echo_feedback(),
         reverb_wet: dsp.reverb_wet(),
         reverb_room: dsp.reverb_room(),
+        cue_send: deck.cue_send(),
+        has_cue_output: deck.has_cue_output(),
     }
 }
 
@@ -313,6 +330,20 @@ fn open_main_device(name: Option<&str>) -> anyhow::Result<OutputDevice> {
     Ok(OutputDevice::open_default()?)
 }
 
+fn open_cue_device(name: Option<&str>) -> Option<OutputDevice> {
+    let n = name?;
+    match OutputDevice::open_by_name(n) {
+        Ok(d) => {
+            info!(device = %d.name(), "cue output device opened");
+            Some(d)
+        }
+        Err(e) => {
+            warn!(device = %n, error = %e, "failed to open cue device, disabling Cue output");
+            None
+        }
+    }
+}
+
 fn empty_snapshot() -> MixerSnapshot {
     MixerSnapshot {
         crossfader: 0.0,
@@ -346,6 +377,8 @@ fn empty_deck_snapshot(id: &'static str) -> DeckSnapshot {
         echo_feedback: 0.4,
         reverb_wet: 0.0,
         reverb_room: 0.5,
+        cue_send: 0.0,
+        has_cue_output: false,
     }
 }
 

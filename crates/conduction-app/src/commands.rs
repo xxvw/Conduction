@@ -159,6 +159,12 @@ pub fn set_reverb(
 }
 
 #[tauri::command]
+pub fn set_cue_send(audio: State<'_, AudioHandle>, deck: String, value: f32) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::SetCueSend { deck: id, value })
+}
+
+#[tauri::command]
 pub fn set_crossfader(audio: State<'_, AudioHandle>, position: f32) -> CmdResult {
     send(&audio, AudioCommand::SetCrossfader(position))
 }
