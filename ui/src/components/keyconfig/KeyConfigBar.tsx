@@ -32,6 +32,11 @@ export function KeyConfigBar({ bindings, activeDeck, zoomWindowSec }: KeyConfigB
           <span className="keyconfig-label">{b.label}</span>
         </span>
       ))}
+      <span className="keyconfig-divider" />
+      <span className="keyconfig-item keyconfig-hint">
+        <kbd className="keyconfig-key">Shift</kbd>
+        <span className="keyconfig-label">+ seek key = fine (no snap)</span>
+      </span>
     </div>
   );
 }

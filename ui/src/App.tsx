@@ -40,6 +40,18 @@ export function App() {
     return m;
   }, [tracksHandle.tracks]);
 
+  // 各デッキにロード中のトラックIDを引き当てる（path → TrackSummary 経由）。
+  const deckATrackId = useMemo(() => {
+    const p = status?.deck_a.loaded_path;
+    return p ? trackByPath.get(p)?.id ?? null : null;
+  }, [status?.deck_a.loaded_path, trackByPath]);
+  const deckBTrackId = useMemo(() => {
+    const p = status?.deck_b.loaded_path;
+    return p ? trackByPath.get(p)?.id ?? null : null;
+  }, [status?.deck_b.loaded_path, trackByPath]);
+  const beatsA = useBeats(deckATrackId);
+  const beatsB = useBeats(deckBTrackId);
+
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
     setActiveDeck(deck);
@@ -48,7 +60,7 @@ export function App() {
 
   // ショートカット: シーク + デッキ切替 + Play/Pause
   const handleShortcut = useCallback(
-    (action: ShortcutAction) => {
+    (action: ShortcutAction, e: KeyboardEvent) => {
       if (action === "focus-deck-a") {
         setActiveDeck("A");
         return;
@@ -84,28 +96,57 @@ export function App() {
         return;
       }
 
-      // シーク系: BPM があれば拍単位、なければ 0.5s 単位でフォールバック
-      const summary = trackByPath.get(snap.loaded_path);
-      const bpm = summary?.bpm ?? 0;
-      const beatSec = bpm > 0 ? 60 / (bpm * snap.playback_speed) : 0.5;
-
-      const beats =
+      const beatOffset =
         action === "seek-back-1" ? -1 :
         action === "seek-fwd-1"  ? +1 :
         action === "seek-back-2" ? -2 :
         action === "seek-fwd-2"  ? +2 :
         action === "seek-back-4" ? -4 :
         action === "seek-fwd-4"  ? +4 : 0;
-      if (beats === 0) return;
+      if (beatOffset === 0) return;
 
-      // 末尾は seek 不能になりがちなので少し手前で止める。
       const upper = (snap.duration_sec ?? 0) > 0
         ? Math.max(0, (snap.duration_sec ?? 0) - 0.05)
         : Number.POSITIVE_INFINITY;
-      const target = Math.max(0, Math.min(upper, snap.position_sec + beats * beatSec));
+      const beatList = activeDeck === "A" ? beatsA : beatsB;
+
+      // Shift なし & ビートグリッドあり → 最も近い拍にスナップしてから N 拍分動く
+      if (!e.shiftKey && beatList.length > 0) {
+        // 二分探索で「現在位置以上の最初の拍」を見つけ、前後どちらが近いか判定
+        let lo = 0;
+        let hi = beatList.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >>> 1;
+          if (beatList[mid]!.position_sec < snap.position_sec) lo = mid + 1;
+          else hi = mid;
+        }
+        const next = beatList[lo];
+        const prev = lo > 0 ? beatList[lo - 1] : undefined;
+        let nearestIdx = lo;
+        if (next && prev) {
+          const dn = Math.abs(next.position_sec - snap.position_sec);
+          const dp = Math.abs(prev.position_sec - snap.position_sec);
+          nearestIdx = dp <= dn ? lo - 1 : lo;
+        } else if (!next && prev) {
+          nearestIdx = lo - 1;
+        }
+        const targetIdx = Math.max(0, Math.min(beatList.length - 1, nearestIdx + beatOffset));
+        const target = Math.max(0, Math.min(upper, beatList[targetIdx]!.position_sec));
+        void ipc.seek(activeDeck, target);
+        return;
+      }
+
+      // Shift あり、または beatList が無い場合 → 相対時間（fine seek）
+      const summary = trackByPath.get(snap.loaded_path);
+      const bpm = summary?.bpm ?? 0;
+      const beatSec = bpm > 0 ? 60 / (bpm * snap.playback_speed) : 0.5;
+      const target = Math.max(
+        0,
+        Math.min(upper, snap.position_sec + beatOffset * beatSec),
+      );
       void ipc.seek(activeDeck, target);
     },
-    [status, activeDeck, trackByPath],
+    [status, activeDeck, trackByPath, beatsA, beatsB],
   );
 
   useShortcuts({ onAction: handleShortcut });
@@ -143,6 +184,8 @@ export function App() {
             activeDeck={activeDeck}
             onSelectDeck={setActiveDeck}
             zoomWindowSec={zoomWindowSec}
+            beatsA={beatsA}
+            beatsB={beatsB}
           />
         ) : (
           <LibraryScreen
@@ -172,12 +215,16 @@ function MixScreen({
   activeDeck,
   onSelectDeck,
   zoomWindowSec,
+  beatsA,
+  beatsB,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
   activeDeck: DeckId;
   onSelectDeck: (deck: DeckId) => void;
   zoomWindowSec: number;
+  beatsA: import("@/types/beat").BeatDto[];
+  beatsB: import("@/types/beat").BeatDto[];
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -188,6 +235,7 @@ function MixScreen({
         isActive={activeDeck === "A"}
         onActivate={() => onSelectDeck("A")}
         zoomWindowSec={zoomWindowSec}
+        beats={beatsA}
       />
       <DeckPanel
         snapshot={status.deck_b}
@@ -195,6 +243,7 @@ function MixScreen({
         isActive={activeDeck === "B"}
         onActivate={() => onSelectDeck("B")}
         zoomWindowSec={zoomWindowSec}
+        beats={beatsB}
       />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
@@ -224,19 +273,20 @@ function DeckPanel({
   isActive,
   onActivate,
   zoomWindowSec,
+  beats,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
   isActive: boolean;
   onActivate: () => void;
   zoomWindowSec: number;
+  beats: import("@/types/beat").BeatDto[];
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
     ? trackByPath.get(snapshot.loaded_path) ?? null
     : null;
   const waveform = useWaveform(loadedTrack?.id ?? null);
-  const beats = useBeats(loadedTrack?.id ?? null);
 
   const baseBpm = loadedTrack?.bpm ?? 0;
   const effectiveBpm = baseBpm > 0 ? baseBpm * snapshot.playback_speed : 0;

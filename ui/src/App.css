@@ -309,6 +309,10 @@
   color: var(--c-ink-9);
   letter-spacing: 0.04em;
 }
+.keyconfig-hint .keyconfig-label {
+  color: var(--c-ink-7);
+  font-style: italic;
+}
 .deck-status-row {
   display: flex;
   align-items: center;
