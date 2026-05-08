@@ -4,55 +4,71 @@ import type { DeckId, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 import type { WaveformPreview } from "@/types/waveform";
 
+// すべての invoke を console.debug でログ。問題切り分け中。
+async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  // eslint-disable-next-line no-console
+  console.debug("[ipc] →", cmd, args ?? {});
+  try {
+    const r = await invoke<T>(cmd, args);
+    // eslint-disable-next-line no-console
+    console.debug("[ipc] ←", cmd, "ok");
+    return r;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[ipc] ✗", cmd, e);
+    throw e;
+  }
+}
+
 export const ipc = {
   // --- Mixer / Deck ---
   loadTrack(deck: DeckId, path: string) {
-    return invoke<void>("load_track", { deck, path });
+    return call<void>("load_track", { deck, path });
   },
   play(deck: DeckId) {
-    return invoke<void>("play", { deck });
+    return call<void>("play", { deck });
   },
   pause(deck: DeckId) {
-    return invoke<void>("pause", { deck });
+    return call<void>("pause", { deck });
   },
   stop(deck: DeckId) {
-    return invoke<void>("stop", { deck });
+    return call<void>("stop", { deck });
   },
   setCrossfader(position: number) {
-    return invoke<void>("set_crossfader", { position });
+    return call<void>("set_crossfader", { position });
   },
   setChannelVolume(deck: DeckId, volume: number) {
-    return invoke<void>("set_channel_volume", { deck, volume });
+    return call<void>("set_channel_volume", { deck, volume });
   },
   setMasterVolume(volume: number) {
-    return invoke<void>("set_master_volume", { volume });
+    return call<void>("set_master_volume", { volume });
   },
   setTempoAdjust(deck: DeckId, adjust: number) {
-    return invoke<void>("set_tempo_adjust", { deck, adjust });
+    return call<void>("set_tempo_adjust", { deck, adjust });
   },
   setTempoRange(deck: DeckId, percent: 6 | 10 | 16) {
-    return invoke<void>("set_tempo_range", { deck, percent });
+    return call<void>("set_tempo_range", { deck, percent });
   },
   getStatus() {
-    return invoke<MixerSnapshot>("get_status");
+    return call<MixerSnapshot>("get_status");
   },
 
   // --- Library ---
   importTrack(path: string) {
-    return invoke<TrackSummary>("import_track", { path });
+    return call<TrackSummary>("import_track", { path });
   },
   listTracks() {
-    return invoke<TrackSummary[]>("list_tracks");
+    return call<TrackSummary[]>("list_tracks");
   },
   deleteTrack(id: string) {
-    return invoke<void>("delete_track", { id });
+    return call<void>("delete_track", { id });
   },
 
   // --- Analysis / Waveform ---
   analyzeTrack(id: string) {
-    return invoke<WaveformPreview>("analyze_track", { id });
+    return call<WaveformPreview>("analyze_track", { id });
   },
   getWaveform(id: string) {
-    return invoke<WaveformPreview | null>("get_waveform", { id });
+    return call<WaveformPreview | null>("get_waveform", { id });
   },
 };

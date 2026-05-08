@@ -113,6 +113,7 @@ pub fn import_track(
     library: State<'_, LibraryHandle>,
     path: String,
 ) -> Result<TrackSummary, String> {
+    eprintln!("[cmd] import_track called: path={path}");
     info!(path = %path, "import_track invoked");
     let path_buf = PathBuf::from(&path);
     let track = build_track_from_file(&path_buf).map_err(|e| e.to_string())?;
@@ -167,6 +168,7 @@ pub fn analyze_track(
     library: State<'_, LibraryHandle>,
     id: String,
 ) -> Result<WaveformPreview, String> {
+    eprintln!("[cmd] analyze_track called: id={id}");
     let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
     let track_id = TrackId::from_uuid(uuid);
 
@@ -190,11 +192,17 @@ pub fn get_waveform(
     library: State<'_, LibraryHandle>,
     id: String,
 ) -> Result<Option<WaveformPreview>, String> {
+    eprintln!("[cmd] get_waveform called: id={id}");
     let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
-    library.with_library(|lib| {
+    let result = library.with_library(|lib| {
         lib.load_waveform(TrackId::from_uuid(uuid))
             .map_err(|e| e.to_string())
-    })
+    });
+    eprintln!(
+        "[cmd] get_waveform returning: id={id} hit={}",
+        matches!(&result, Ok(Some(_)))
+    );
+    result
 }
 
 fn analyze_and_save_internal(
@@ -211,6 +219,7 @@ fn analyze_and_save_internal(
 
 #[tauri::command]
 pub fn list_tracks(library: State<'_, LibraryHandle>) -> Result<Vec<TrackSummary>, String> {
+    eprintln!("[cmd] list_tracks called");
     library.with_library(|lib| {
         lib.list_tracks()
             .map(|tracks| tracks.iter().map(TrackSummary::from_track).collect())
