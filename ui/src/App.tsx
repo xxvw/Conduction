@@ -294,13 +294,6 @@ function DeckPanel({
   // mixer snapshot は 10 Hz だが、波形カーソルは 60 Hz で動かしたいので補間する。
   const livePosSec = useInterpolatedPosition(snapshot);
 
-  const downbeatRatios = useMemo(() => {
-    if (!snapshot.duration_sec || snapshot.duration_sec <= 0) return [];
-    return beats
-      .filter((b) => b.is_downbeat)
-      .map((b) => b.position_sec / snapshot.duration_sec!);
-  }, [beats, snapshot.duration_sec]);
-
   const handleLoad = useCallback(async () => {
     const path = await open({
       multiple: false,
@@ -383,7 +376,6 @@ function DeckPanel({
         <WaveformView
           waveform={waveform}
           positionRatio={positionRatio}
-          downbeatRatios={downbeatRatios}
           height={84}
           onSeekRatio={(r) => {
             if (snapshot.duration_sec && snapshot.duration_sec > 0) {
