@@ -226,6 +226,84 @@
   border-color: rgba(169, 138, 255, 0.85);
   color: #FFFFFF;
 }
+.loop-badge[data-armed="true"] {
+  /* IN だけ設定された "OUT待ち" 状態は控えめに点滅 */
+  animation: loop-armed-pulse 1.2s ease-in-out infinite;
+}
+@keyframes loop-armed-pulse {
+  0%, 100% { background: rgba(169, 138, 255, 0.10); }
+  50%      { background: rgba(169, 138, 255, 0.30); }
+}
+
+/* --- Loop Pad --- */
+.loop-pad {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-3);
+  background: var(--c-ink-2);
+}
+.loop-pad-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.loop-pad-clear {
+  justify-content: flex-end;
+}
+.loop-btn {
+  flex: 1;
+  padding: var(--s-2) var(--s-3);
+  background: var(--c-ink-3);
+  color: var(--c-ink-11);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.loop-btn:hover:not(:disabled) {
+  border-color: rgba(169, 138, 255, 0.7);
+  color: rgba(169, 138, 255, 1.0);
+}
+.loop-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.loop-btn[data-armed="true"] {
+  background: rgba(169, 138, 255, 0.18);
+  border-color: rgba(169, 138, 255, 0.85);
+  color: #FFF;
+  box-shadow: 0 0 0 1px rgba(169, 138, 255, 0.5) inset;
+}
+.loop-btn[data-tone="in"][data-armed="true"] {
+  /* IN だけ armed = OUT 待ち。点滅で強調 */
+  animation: loop-armed-pulse 1.2s ease-in-out infinite;
+}
+.loop-btn-clear {
+  flex: 0 0 auto;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-micro);
+  color: var(--c-ink-9);
+}
+.loop-btn-clear:hover:not(:disabled) {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+}
+.loop-length {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-small);
+  color: var(--c-loop, #A98AFF);
+  letter-spacing: 0.04em;
+}
 
 /* --- Hot Cue Pad --- */
 .hotcue-pad {

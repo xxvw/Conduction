@@ -10,8 +10,8 @@ interface WaveformViewProps {
   downbeatRatios?: number[];
   /** Hot Cue を比率 (0..1) で重ねる。 */
   hotCueRatios?: { slot: number; ratio: number }[];
-  /** ループ範囲を比率で重ねる。 */
-  loopRangeRatio?: { startRatio: number; endRatio: number; active: boolean } | null;
+  /** ループ範囲を比率で重ねる。endRatio が null の場合は IN マーカーだけ表示。 */
+  loopRangeRatio?: { startRatio: number; endRatio: number | null; active: boolean } | null;
   /** クリック時、その x 位置の比率（0..1）が渡される。 */
   onSeekRatio?: (ratio: number) => void;
   height?: number;
@@ -117,17 +117,39 @@ function drawDownbeats(
   }
 }
 
-/** ループ範囲を violet 色で塗る（active なら濃い、inactive なら薄い）。 */
+/** ループ範囲を violet で塗る。endRatio が null なら IN マーカーだけ。 */
 function drawLoopOverview(
   ctx: CanvasRenderingContext2D,
-  range: { startRatio: number; endRatio: number; active: boolean },
+  range: { startRatio: number; endRatio: number | null; active: boolean },
   width: number,
   height: number,
 ) {
   const a = Math.max(0, Math.min(1, range.startRatio));
+  const xStart = a * width;
+
+  if (range.endRatio == null) {
+    // IN だけ設定 — 強調された縦線 + 上端に「IN」フラグ
+    ctx.strokeStyle = "rgba(169, 138, 255, 0.95)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(xStart) + 0.5, 0);
+    ctx.lineTo(Math.round(xStart) + 0.5, height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "rgba(169, 138, 255, 0.95)";
+    ctx.fillRect(xStart, 0, 18, 9);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.font = "bold 8px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("IN", xStart + 9, 4.5);
+    return;
+  }
+
   const b = Math.max(0, Math.min(1, range.endRatio));
   if (b <= a) return;
-  const xStart = a * width;
   const w = Math.max(2, (b - a) * width);
   ctx.fillStyle = range.active
     ? "rgba(169, 138, 255, 0.22)"

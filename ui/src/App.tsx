@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import "./App.css";
 import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigBar } from "@/components/keyconfig/KeyConfigBar";
+import { LoopPad } from "@/components/loop/LoopPad";
 import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
@@ -378,9 +379,9 @@ function DeckPanel({
       .map((c) => ({ slot: c.slot, ratio: c.position_sec / snapshot.duration_sec! }));
   }, [hotCues.cues, snapshot.duration_sec]);
 
-  // ループ範囲（overview / zoom 共通）
+  // ループ範囲（IN だけ設定 / 完了 両方を扱う）
   const loopRangeSec = useMemo(() => {
-    if (snapshot.loop_start_sec == null || snapshot.loop_end_sec == null) return null;
+    if (snapshot.loop_start_sec == null) return null;
     return {
       startSec: snapshot.loop_start_sec,
       endSec: snapshot.loop_end_sec,
@@ -392,7 +393,8 @@ function DeckPanel({
     if (!loopRangeSec || !snapshot.duration_sec || snapshot.duration_sec <= 0) return null;
     return {
       startRatio: loopRangeSec.startSec / snapshot.duration_sec,
-      endRatio: loopRangeSec.endSec / snapshot.duration_sec,
+      endRatio:
+        loopRangeSec.endSec != null ? loopRangeSec.endSec / snapshot.duration_sec : null,
       active: loopRangeSec.active,
     };
   }, [loopRangeSec, snapshot.duration_sec]);
@@ -454,16 +456,27 @@ function DeckPanel({
               <span
                 className="loop-badge"
                 data-active={loopRangeSec.active || undefined}
-                title="loop range"
+                data-armed={loopRangeSec.endSec == null || undefined}
+                title={
+                  loopRangeSec.endSec == null
+                    ? `Loop IN @ ${loopRangeSec.startSec.toFixed(2)}s — press OUT to close`
+                    : "loop range"
+                }
               >
-                LOOP
-                {baseBpm > 0 && (
+                {loopRangeSec.endSec == null ? (
+                  <>LOOP IN @ {formatSec(loopRangeSec.startSec)}</>
+                ) : (
                   <>
-                    {" "}
-                    {Math.round(
-                      ((loopRangeSec.endSec - loopRangeSec.startSec) * baseBpm) / 60 / 4
-                    ) || ""}
-                    bar
+                    LOOP
+                    {baseBpm > 0 && (
+                      <>
+                        {" "}
+                        {Math.round(
+                          ((loopRangeSec.endSec - loopRangeSec.startSec) * baseBpm) / 60 / 4,
+                        ) || ""}
+                        bar
+                      </>
+                    )}
                   </>
                 )}
               </span>
@@ -605,6 +618,29 @@ function DeckPanel({
           </button>
         </div>
       </div>
+
+      <LoopPad
+        deckId={deck}
+        loopState={loopRangeSec}
+        bpm={baseBpm}
+        currentPositionSec={snapshot.position_sec}
+        onIn={() => void ipc.loopIn(deck, snapshot.position_sec)}
+        onOut={() => void ipc.loopOut(deck, snapshot.position_sec)}
+        onToggle={() => void ipc.loopToggle(deck)}
+        onClear={() => void ipc.loopClear(deck)}
+        onShrink={() => {
+          if (!loopRangeSec || loopRangeSec.endSec == null || baseBpm <= 0) return;
+          const barSec = (60 / baseBpm) * 4;
+          const minEnd = loopRangeSec.startSec + (60 / baseBpm) * 0.25;
+          const newEnd = Math.max(minEnd, loopRangeSec.endSec - barSec);
+          void ipc.loopOut(deck, newEnd);
+        }}
+        onExtend={() => {
+          if (!loopRangeSec || loopRangeSec.endSec == null || baseBpm <= 0) return;
+          const barSec = (60 / baseBpm) * 4;
+          void ipc.loopOut(deck, loopRangeSec.endSec + barSec);
+        }}
+      />
 
       <HotCuePad
         deckId={deck}

@@ -17,8 +17,8 @@ interface WaveformZoomViewProps {
   height?: number;
   /** クリックした時、その秒位置にシークするためのコールバック。 */
   onSeekSec?: (sec: number) => void;
-  /** ループ範囲（秒）。 */
-  loopRange?: { startSec: number; endSec: number; active: boolean } | null;
+  /** ループ範囲（秒）。endSec が null の場合は IN マーカーのみ表示。 */
+  loopRange?: { startSec: number; endSec: number | null; active: boolean } | null;
 }
 
 /**
@@ -92,7 +92,7 @@ export function WaveformZoomView({
       );
     }
 
-    if (loopRange && loopRange.endSec > loopRange.startSec) {
+    if (loopRange) {
       drawLoopRange(ctx, loopRange, xOf, cssW, height, markerTop, markerBottom);
     }
     drawBeatRibbons(ctx, beats, startSec, endSec, xOf, cssW, height, markerTop, markerBottom);
@@ -280,28 +280,52 @@ function drawBeatRibbons(
 /** ループ範囲を violet で塗りつぶし、IN/OUT 端に明るい縦線。 */
 function drawLoopRange(
   ctx: CanvasRenderingContext2D,
-  range: { startSec: number; endSec: number; active: boolean },
+  range: { startSec: number; endSec: number | null; active: boolean },
   xOf: (sec: number) => number,
   width: number,
   height: number,
   topH: number,
   bottomH: number,
 ) {
-  const xa = xOf(range.startSec);
-  const xb = xOf(range.endSec);
-  if (xb <= xa) return;
   const drawTop = topH;
   const drawBottom = height - bottomH;
   const drawH = drawBottom - drawTop;
+  const xa = xOf(range.startSec);
+
+  // IN だけ設定（OUT 待ち）の状態
+  if (range.endSec == null) {
+    if (xa < 0 || xa > width) return;
+    ctx.strokeStyle = "rgba(169, 138, 255, 0.95)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(xa) + 0.5, drawTop);
+    ctx.lineTo(Math.round(xa) + 0.5, drawBottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 上端に "IN" フラグ
+    ctx.fillStyle = "rgba(169, 138, 255, 0.95)";
+    ctx.fillRect(xa, 0, 22, topH);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+    ctx.font = "bold 9px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("IN", xa + 11, topH / 2 + 0.5);
+    return;
+  }
+
+  const xb = xOf(range.endSec);
+  if (xb <= xa) return;
 
   const visibleStart = Math.max(0, xa);
   const visibleEnd = Math.min(width, xb);
-  if (visibleEnd <= visibleStart) return;
-
-  ctx.fillStyle = range.active
-    ? "rgba(169, 138, 255, 0.22)"
-    : "rgba(169, 138, 255, 0.10)";
-  ctx.fillRect(visibleStart, drawTop, visibleEnd - visibleStart, drawH);
+  if (visibleEnd > visibleStart) {
+    ctx.fillStyle = range.active
+      ? "rgba(169, 138, 255, 0.22)"
+      : "rgba(169, 138, 255, 0.10)";
+    ctx.fillRect(visibleStart, drawTop, visibleEnd - visibleStart, drawH);
+  }
 
   // IN / OUT 端の縦線（範囲内に来た時だけ）
   if (xa >= 0 && xa <= width) {
@@ -313,6 +337,14 @@ function drawLoopRange(
     ctx.moveTo(Math.round(xa) + 0.5, drawTop);
     ctx.lineTo(Math.round(xa) + 0.5, drawBottom);
     ctx.stroke();
+    // IN ラベル
+    ctx.fillStyle = "rgba(169, 138, 255, 0.95)";
+    ctx.fillRect(xa, 0, 22, topH);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+    ctx.font = "bold 9px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("IN", xa + 11, topH / 2 + 0.5);
   }
   if (xb >= 0 && xb <= width) {
     ctx.strokeStyle = range.active
@@ -323,6 +355,14 @@ function drawLoopRange(
     ctx.moveTo(Math.round(xb) + 0.5, drawTop);
     ctx.lineTo(Math.round(xb) + 0.5, drawBottom);
     ctx.stroke();
+    // OUT ラベル
+    ctx.fillStyle = "rgba(169, 138, 255, 0.95)";
+    ctx.fillRect(xb - 26, 0, 26, topH);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+    ctx.font = "bold 9px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("OUT", xb - 13, topH / 2 + 0.5);
   }
 }
 
