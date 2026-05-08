@@ -194,15 +194,54 @@ pub fn get_waveform(
 ) -> Result<Option<WaveformPreview>, String> {
     eprintln!("[cmd] get_waveform called: id={id}");
     let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
+    let track_id = TrackId::from_uuid(uuid);
+
     let result = library.with_library(|lib| {
-        lib.load_waveform(TrackId::from_uuid(uuid))
-            .map_err(|e| e.to_string())
-    });
+        lib.load_waveform(track_id).map_err(|e| e.to_string())
+    })?;
+
+    // 波形が無く、まだ解析中でなければ、ここでバックグラウンド解析を開始する。
+    // これにより、UI の useWaveform polling だけで自動解析が走る。
+    if result.is_none() && library.claim_analyzing(track_id) {
+        let path_opt = library
+            .with_library(|lib| lib.get_track(track_id).map_err(|e| e.to_string()))?
+            .map(|t| t.path);
+
+        if let Some(path) = path_opt {
+            let lib_shared = library.shared();
+            let analyzing_set = library.analyzing_set();
+            let analyze_path = path.clone();
+            eprintln!("[cmd] get_waveform: spawning analyze thread for id={id}");
+            let _ = std::thread::Builder::new()
+                .name("analyze-on-demand".into())
+                .spawn(move || {
+                    info!(path = %analyze_path.display(), "on-demand analyze starting");
+                    let started = std::time::Instant::now();
+                    match analyze_and_save_internal(&lib_shared, track_id, &analyze_path) {
+                        Ok(_) => info!(
+                            path = %analyze_path.display(),
+                            elapsed_ms = started.elapsed().as_millis() as u64,
+                            "on-demand analyze completed"
+                        ),
+                        Err(e) => warn!(
+                            error = %e,
+                            path = %analyze_path.display(),
+                            "on-demand analyze failed"
+                        ),
+                    }
+                    analyzing_set.lock().remove(&track_id);
+                });
+        } else {
+            // path 取得に失敗 → フラグを解放
+            library.release_analyzing(track_id);
+        }
+    }
+
     eprintln!(
         "[cmd] get_waveform returning: id={id} hit={}",
-        matches!(&result, Ok(Some(_)))
+        result.is_some()
     );
-    result
+    Ok(result)
 }
 
 fn analyze_and_save_internal(
