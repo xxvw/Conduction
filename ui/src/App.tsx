@@ -16,6 +16,7 @@ import { useMixerStatus } from "@/hooks/useMixerStatus";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
 import { useWaveform } from "@/hooks/useWaveform";
+import { snapToNearestBeat } from "@/lib/beats";
 import { ipc } from "@/lib/ipc";
 import {
   DEFAULT_ZOOM_SEC,
@@ -103,13 +104,17 @@ export function App() {
         return;
       }
 
-      // ループ
+      const beatList = activeDeck === "A" ? beatsA : beatsB;
+
+      // ループ — 設定位置はビートグリッドにスナップ
       if (action === "loop-in") {
-        void ipc.loopIn(activeDeck, snap.position_sec);
+        const snapped = snapToNearestBeat(snap.position_sec, beatList);
+        void ipc.loopIn(activeDeck, snapped);
         return;
       }
       if (action === "loop-out") {
-        void ipc.loopOut(activeDeck, snap.position_sec);
+        const snapped = snapToNearestBeat(snap.position_sec, beatList);
+        void ipc.loopOut(activeDeck, snapped);
         return;
       }
       if (action === "loop-toggle") {
@@ -121,18 +126,18 @@ export function App() {
         const summaryForLoop = trackByPath.get(snap.loaded_path);
         const bpmForLoop = summaryForLoop?.bpm ?? 0;
         if (bpmForLoop <= 0) return; // BPM未推定時は伸縮できない
-        // 1 小節 = 4 拍。再生速度の影響は受けない (拍は楽曲基準)。
         const barSec = (60 / bpmForLoop) * 4;
         const sign = action === "loop-extend" ? +1 : -1;
         const newEnd = snap.loop_end_sec + sign * barSec;
         // 最小幅: start から 1/4 拍以上は確保
         const minEnd = snap.loop_start_sec + (60 / bpmForLoop) * 0.25;
         const clampedEnd = Math.max(minEnd, newEnd);
-        void ipc.loopOut(activeDeck, clampedEnd);
+        // ビートグリッドにスナップ
+        void ipc.loopOut(activeDeck, snapToNearestBeat(clampedEnd, beatList));
         return;
       }
 
-      // Hot Cue: 1..8
+      // Hot Cue: 1..8 — 保存位置もビートグリッドにスナップ
       if (action.startsWith("hotcue-")) {
         const slot = Number(action.slice("hotcue-".length));
         if (!Number.isFinite(slot) || slot < 1 || slot > 8) return;
@@ -140,7 +145,8 @@ export function App() {
         if (e.altKey) {
           void cuesHandle.remove(slot);
         } else if (e.shiftKey) {
-          void cuesHandle.set(slot, snap.position_sec);
+          const snapped = snapToNearestBeat(snap.position_sec, beatList);
+          void cuesHandle.set(slot, snapped);
         } else {
           const cue = cuesHandle.get(slot);
           if (cue) void ipc.seek(activeDeck, cue.position_sec);
@@ -160,7 +166,6 @@ export function App() {
       const upper = (snap.duration_sec ?? 0) > 0
         ? Math.max(0, (snap.duration_sec ?? 0) - 0.05)
         : Number.POSITIVE_INFINITY;
-      const beatList = activeDeck === "A" ? beatsA : beatsB;
 
       // Shift なし & ビートグリッドあり → 最も近い拍にスナップしてから N 拍分動く
       if (!e.shiftKey && beatList.length > 0) {
@@ -624,8 +629,12 @@ function DeckPanel({
         loopState={loopRangeSec}
         bpm={baseBpm}
         currentPositionSec={snapshot.position_sec}
-        onIn={() => void ipc.loopIn(deck, snapshot.position_sec)}
-        onOut={() => void ipc.loopOut(deck, snapshot.position_sec)}
+        onIn={() =>
+          void ipc.loopIn(deck, snapToNearestBeat(snapshot.position_sec, beats))
+        }
+        onOut={() =>
+          void ipc.loopOut(deck, snapToNearestBeat(snapshot.position_sec, beats))
+        }
         onToggle={() => void ipc.loopToggle(deck)}
         onClear={() => void ipc.loopClear(deck)}
         onShrink={() => {
@@ -633,12 +642,12 @@ function DeckPanel({
           const barSec = (60 / baseBpm) * 4;
           const minEnd = loopRangeSec.startSec + (60 / baseBpm) * 0.25;
           const newEnd = Math.max(minEnd, loopRangeSec.endSec - barSec);
-          void ipc.loopOut(deck, newEnd);
+          void ipc.loopOut(deck, snapToNearestBeat(newEnd, beats));
         }}
         onExtend={() => {
           if (!loopRangeSec || loopRangeSec.endSec == null || baseBpm <= 0) return;
           const barSec = (60 / baseBpm) * 4;
-          void ipc.loopOut(deck, loopRangeSec.endSec + barSec);
+          void ipc.loopOut(deck, snapToNearestBeat(loopRangeSec.endSec + barSec, beats));
         }}
       />
 
@@ -650,7 +659,7 @@ function DeckPanel({
           const cue = hotCues.get(slot);
           if (cue) void ipc.seek(deck, cue.position_sec);
         }}
-        onSet={(slot, posSec) => void hotCues.set(slot, posSec)}
+        onSet={(slot, posSec) => void hotCues.set(slot, snapToNearestBeat(posSec, beats))}
         onDelete={(slot) => void hotCues.remove(slot)}
       />
     </section>
