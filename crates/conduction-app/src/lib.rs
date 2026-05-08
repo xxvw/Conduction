@@ -47,10 +47,17 @@ pub fn run() {
 }
 
 fn init_tracing() {
-    // RUST_LOG が未指定なら、conduction* は debug、それ以外は info を出す。
-    // 例: RUST_LOG=trace conduction で全部見る。
+    // RUST_LOG が未指定の時のデフォルト：
+    // - conduction* は debug
+    // - Symphonia の MP3 デコーダは seek 直後に "invalid main_data_begin" の WARN を
+    //   ビットリザーバ参照解消の都合で出すが、実害がないので error 以上に絞る
+    // - その他は info
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("info,conduction_app=debug,conduction_analysis=debug,conduction_library=debug")
+        EnvFilter::new(
+            "info,\
+             conduction_app=debug,conduction_analysis=debug,conduction_library=debug,\
+             symphonia=error,symphonia_bundle_mp3=error,symphonia_core=error",
+        )
     });
     let _ = fmt().with_env_filter(filter).with_target(true).try_init();
 }

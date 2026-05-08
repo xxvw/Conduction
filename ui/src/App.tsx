@@ -96,7 +96,11 @@ export function App() {
         action === "seek-fwd-4"  ? +4 : 0;
       if (beats === 0) return;
 
-      const target = Math.max(0, snap.position_sec + beats * beatSec);
+      // 末尾は seek 不能になりがちなので少し手前で止める。
+      const upper = (snap.duration_sec ?? 0) > 0
+        ? Math.max(0, (snap.duration_sec ?? 0) - 0.05)
+        : Number.POSITIVE_INFINITY;
+      const target = Math.max(0, Math.min(upper, snap.position_sec + beats * beatSec));
       void ipc.seek(activeDeck, target);
     },
     [status, activeDeck, trackByPath],

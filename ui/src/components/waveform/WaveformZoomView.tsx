@@ -148,20 +148,46 @@ function drawBeatLines(
   xOf: (sec: number) => number,
   height: number,
 ) {
+  // 上下端に矩形マーカー：通常拍は白、ダウンビート（毎4拍）は赤。
+  // 縦線は控えめに（カーソルや波形を邪魔しない程度）。
+  const COLOR_DOWN = "rgba(255, 45, 85, 0.95)"; // --c-live
+  const COLOR_BEAT = "rgba(255, 255, 255, 0.85)";
+
   for (const beat of beats) {
     if (beat.position_sec < startSec || beat.position_sec > endSec) continue;
-    const x = xOf(beat.position_sec);
+    const x = Math.round(xOf(beat.position_sec));
+
     if (beat.is_downbeat) {
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
-      ctx.lineWidth = 1.5;
-    } else {
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      // 縦線（控えめな赤）
+      ctx.strokeStyle = "rgba(255, 45, 85, 0.30)";
       ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, height);
+      ctx.stroke();
+
+      // 上下端の矩形マーカー（赤、太め）
+      ctx.fillStyle = COLOR_DOWN;
+      const w = 4;
+      const h = 7;
+      ctx.fillRect(x - w / 2, 0, w, h);
+      ctx.fillRect(x - w / 2, height - h, w, h);
+    } else {
+      // 縦線（控えめな白）
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.10)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, height);
+      ctx.stroke();
+
+      // 上下端の矩形マーカー（白、細め）
+      ctx.fillStyle = COLOR_BEAT;
+      const w = 2;
+      const h = 4;
+      ctx.fillRect(x - w / 2, 0, w, h);
+      ctx.fillRect(x - w / 2, height - h, w, h);
     }
-    ctx.beginPath();
-    ctx.moveTo(Math.round(x) + 0.5, 0);
-    ctx.lineTo(Math.round(x) + 0.5, height);
-    ctx.stroke();
   }
 }
 
