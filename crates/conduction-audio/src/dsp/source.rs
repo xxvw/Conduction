@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use biquad::{Biquad, Coefficients, DirectForm1, ToHertz, Type, Q_BUTTERWORTH_F32};
+use rodio::source::SeekError;
 use rodio::Source;
 
 use super::coefficients::{high_shelf, low_shelf, peaking_eq};
@@ -84,6 +85,30 @@ where
         };
         s.refresh_coefficients(true);
         s
+    }
+
+    /// シーク後など、フィルタ・遅延ライン・リバーブの内部状態をクリアする。
+    fn reset_states(&mut self) {
+        for f in &mut self.eq_low {
+            f.reset_state();
+        }
+        for f in &mut self.eq_mid {
+            f.reset_state();
+        }
+        for f in &mut self.eq_high {
+            f.reset_state();
+        }
+        for slot in &mut self.filter_state {
+            if let Some(state) = slot.as_mut() {
+                state.reset_state();
+            }
+        }
+        for e in &mut self.echo {
+            e.reset();
+        }
+        for r in &mut self.reverb {
+            r.reset();
+        }
     }
 
     fn refresh_coefficients(&mut self, force: bool) {
@@ -235,5 +260,13 @@ where
     }
     fn total_duration(&self) -> Option<Duration> {
         self.inner.total_duration()
+    }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+        self.inner.try_seek(pos)?;
+        // 過去サンプルが残るとシーク先で「クリック」や「テール」が出るので、
+        // フィルタ係数だけ保ったまま遅延ラインとフィルタ状態をゼロクリアする。
+        self.reset_states();
+        Ok(())
     }
 }

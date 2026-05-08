@@ -16,6 +16,14 @@ impl EchoEffect {
         }
     }
 
+    /// シーク時等、状態をクリア。テールの引きずりを止める。
+    pub fn reset(&mut self) {
+        for s in self.buffer.iter_mut() {
+            *s = 0.0;
+        }
+        self.write_pos = 0;
+    }
+
     pub fn process(&mut self, input: f32, time_ms: f32, feedback: f32, wet: f32) -> f32 {
         if wet < 0.001 {
             // ドライそのまま。バッファ更新は止めて状態をリセット気味に。

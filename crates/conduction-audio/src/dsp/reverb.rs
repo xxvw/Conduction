@@ -28,6 +28,13 @@ impl CombFilter {
         self.write_pos = (self.write_pos + 1) % self.buffer.len();
         output
     }
+
+    fn reset(&mut self) {
+        for s in self.buffer.iter_mut() {
+            *s = 0.0;
+        }
+        self.write_pos = 0;
+    }
 }
 
 struct AllPassFilter {
@@ -49,6 +56,13 @@ impl AllPassFilter {
         self.buffer[self.write_pos] = input + buf_out * 0.5;
         self.write_pos = (self.write_pos + 1) % self.buffer.len();
         output
+    }
+
+    fn reset(&mut self) {
+        for s in self.buffer.iter_mut() {
+            *s = 0.0;
+        }
+        self.write_pos = 0;
     }
 }
 
@@ -82,6 +96,15 @@ impl SchroederReverb {
         let fb = 0.5 + r * 0.45;
         for c in &mut self.combs {
             c.set_feedback(fb);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for c in &mut self.combs {
+            c.reset();
+        }
+        for ap in &mut self.allpasses {
+            ap.reset();
         }
     }
 
