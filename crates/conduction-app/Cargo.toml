@@ -39,6 +39,7 @@ conduction-script.workspace = true
 
 tauri = { version = "2.0", features = [] }
 tauri-plugin-dialog = "2.0"
+sysinfo = "0.32"
 
 serde.workspace = true
 serde_json.workspace = true

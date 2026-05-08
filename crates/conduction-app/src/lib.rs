@@ -7,6 +7,7 @@
 pub mod audio_engine;
 pub mod commands;
 pub mod library_state;
+pub mod system_stats;
 
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -17,12 +18,14 @@ pub fn run() {
 
     let audio = audio_engine::spawn().expect("audio engine must start");
     let library = library_state::LibraryHandle::open_default().expect("library must open");
+    let stats = system_stats::SystemStatsHandle::new();
     info!("conduction-app booting");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(audio)
         .manage(library)
+        .manage(stats)
         .invoke_handler(tauri::generate_handler![
             commands::load_track,
             commands::play,
@@ -41,6 +44,7 @@ pub fn run() {
             commands::analyze_track,
             commands::get_waveform,
             commands::get_track_beats,
+            commands::get_resource_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

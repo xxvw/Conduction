@@ -207,6 +207,41 @@
 .tempo-pct { color: var(--c-ink-11); }
 .tempo-bpm { color: var(--c-ink-9); }
 
+/* --- Performance HUD --- */
+.perf-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 4px var(--s-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  background: var(--c-ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.05em;
+}
+.perf-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.perf-metric[data-muted] {
+  opacity: 0.45;
+}
+.perf-metric[data-warn] .perf-value {
+  color: var(--c-warning);
+}
+.perf-label {
+  color: var(--c-ink-7);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.perf-value {
+  color: var(--c-ink-11);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- KeyConfig bar --- */
 .keyconfig-bar {
   display: flex;

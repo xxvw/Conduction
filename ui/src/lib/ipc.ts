@@ -78,4 +78,13 @@ export const ipc = {
   getTrackBeats(id: string) {
     return call<BeatDto[]>("get_track_beats", { id });
   },
+  getResourceStats() {
+    return call<ResourceStats>("get_resource_stats");
+  },
 };
+
+export interface ResourceStats {
+  cpu_percent: number;
+  memory_mb: number;
+  logical_cores: number;
+}

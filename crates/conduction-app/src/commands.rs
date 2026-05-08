@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
 use crate::library_state::{LibraryHandle, TrackSummary};
+use crate::system_stats::{ResourceStats, SystemStatsHandle};
 
 type CmdResult<T = ()> = Result<T, String>;
 
@@ -220,9 +221,14 @@ pub fn get_waveform(
         lib.load_waveform(track_id).map_err(|e| e.to_string())
     })?;
 
-    // 波形が無く、まだ解析中でなければ、ここでバックグラウンド解析を開始する。
-    // これにより、UI の useWaveform polling だけで自動解析が走る。
-    if result.is_none() && library.claim_analyzing(track_id) {
+    // 波形が無いか、ビートグリッドが空（= BPM 未推定）なら、
+    // バックグラウンドで解析を開始して両方を埋める。
+    let beats_count = library
+        .with_library(|lib| lib.load_beatgrid(track_id).map(|b| b.len()))
+        .unwrap_or(0);
+    let needs_analysis = result.is_none() || beats_count == 0;
+
+    if needs_analysis && library.claim_analyzing(track_id) {
         let path_opt = library
             .with_library(|lib| lib.get_track(track_id).map_err(|e| e.to_string()))?
             .map(|t| t.path);
@@ -304,6 +310,11 @@ impl From<&Beat> for BeatDto {
             is_downbeat: b.is_downbeat,
         }
     }
+}
+
+#[tauri::command]
+pub fn get_resource_stats(stats: State<'_, SystemStatsHandle>) -> ResourceStats {
+    stats.snapshot()
 }
 
 #[tauri::command]

@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import "./App.css";
 import { KeyConfigBar } from "@/components/keyconfig/KeyConfigBar";
+import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
 import { useBeats } from "@/hooks/useBeats";
@@ -129,6 +130,7 @@ export function App() {
           </button>
         </nav>
         <div className="spacer" />
+        <PerfHud />
         <MasterSlim volume={status?.master_volume ?? 1.0} />
       </header>
 
