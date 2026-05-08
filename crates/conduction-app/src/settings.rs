@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 /// 永続化される全設定。フィールドは必要に応じて拡張する。
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(default)]
 pub struct AppSettings {
     pub keybindings: Vec<KeybindingEntry>,
@@ -27,13 +27,14 @@ pub struct AppSettings {
     pub audio_cue_output: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct KeybindingEntry {
     pub action: String,
     pub key: String,
     pub label: String,
 }
 
+#[derive(Clone)]
 pub struct SettingsHandle {
     state: Arc<Mutex<State>>,
 }

@@ -13,6 +13,7 @@ use serde::Serialize;
 use tracing::info;
 
 /// Tauri State として共有されるライブラリハンドル。
+#[derive(Clone)]
 pub struct LibraryHandle {
     inner: Arc<Mutex<Library>>,
     /// 現在バックグラウンド解析が走っている TrackId の集合。
@@ -58,7 +59,7 @@ impl LibraryHandle {
 }
 
 /// UI に返すトラック要約。Key は Camelot 文字列（"8A" など）に整形済み。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct TrackSummary {
     pub id: String,
     pub path: String,

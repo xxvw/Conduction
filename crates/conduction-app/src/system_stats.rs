@@ -10,7 +10,7 @@ use serde::Serialize;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
 /// UI に渡す統計値。
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, utoipa::ToSchema)]
 pub struct ResourceStats {
     /// プロセス CPU 使用率（0..100、論理コア合計を 100 と見なすホスト依存値）。
     pub cpu_percent: f32,
@@ -20,6 +20,7 @@ pub struct ResourceStats {
     pub logical_cores: u32,
 }
 
+#[derive(Clone)]
 pub struct SystemStatsHandle {
     inner: Arc<Mutex<SystemStats>>,
 }

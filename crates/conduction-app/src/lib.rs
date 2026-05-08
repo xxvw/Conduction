@@ -6,6 +6,7 @@
 
 pub mod audio_engine;
 pub mod commands;
+pub mod http_api;
 pub mod library_state;
 pub mod settings;
 pub mod system_stats;
@@ -25,6 +26,17 @@ pub fn run() {
     let library = library_state::LibraryHandle::open_default().expect("library must open");
     let stats = system_stats::SystemStatsHandle::new();
     info!("conduction-app booting");
+
+    // localhost WebAPI を別スレッドで起動。Tauri と同じ State インスタンスを共有する。
+    http_api::spawn(
+        http_api::AppState {
+            audio: audio.clone(),
+            library: library.clone(),
+            settings: settings.clone(),
+            stats: stats.clone(),
+        },
+        http_api::DEFAULT_HTTP_PORT,
+    );
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

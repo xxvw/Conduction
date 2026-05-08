@@ -13,8 +13,58 @@ interface SettingsScreenProps {
   reset: () => void;
 }
 
+type SettingsTab = "general" | "api";
+
+const HTTP_API_BASE = "http://127.0.0.1:38127";
+
 export function SettingsScreen({ bindings, setBinding, reset }: SettingsScreenProps) {
-  // 重複検出: 各 key が何回出現するか
+  const [tab, setTab] = useState<SettingsTab>("general");
+
+  return (
+    <section className="settings-screen">
+      <header className="settings-header">
+        <h2>Settings</h2>
+        <p className="settings-subtitle">Conductionの操作をカスタマイズ.</p>
+      </header>
+
+      <div className="settings-layout">
+        <aside className="settings-tabs" role="tablist" aria-label="Settings tabs">
+          <button
+            role="tab"
+            className="settings-tab"
+            data-active={tab === "general"}
+            aria-selected={tab === "general"}
+            onClick={() => setTab("general")}
+          >
+            General
+          </button>
+          <button
+            role="tab"
+            className="settings-tab"
+            data-active={tab === "api"}
+            aria-selected={tab === "api"}
+            onClick={() => setTab("api")}
+          >
+            API Docs
+          </button>
+        </aside>
+
+        <div className="settings-content" role="tabpanel">
+          {tab === "general" && (
+            <GeneralTab
+              bindings={bindings}
+              setBinding={setBinding}
+              reset={reset}
+            />
+          )}
+          {tab === "api" && <ApiDocsTab />}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function GeneralTab({ bindings, setBinding, reset }: SettingsScreenProps) {
   const duplicateKeys = useMemo(() => {
     const counts = new Map<string, number>();
     for (const b of bindings) {
@@ -24,12 +74,7 @@ export function SettingsScreen({ bindings, setBinding, reset }: SettingsScreenPr
   }, [bindings]);
 
   return (
-    <section className="settings-screen">
-      <header className="settings-header">
-        <h2>Settings</h2>
-        <p className="settings-subtitle">Conductionの操作をカスタマイズ.</p>
-      </header>
-
+    <>
       <AudioOutputSection />
 
       <section className="settings-section">
@@ -56,9 +101,55 @@ export function SettingsScreen({ bindings, setBinding, reset }: SettingsScreenPr
       <section className="settings-section">
         <h3>About</h3>
         <p className="hint">
-          設定は <code>localStorage</code> に保存されます。クリアしたい場合は Reset を押してください。
+          キーバインドと出力デバイスの設定は OS の設定ファイル
+          (<code>~/Library/Application Support/com.xxvw.conduction/settings.toml</code>)
+          に保存されます。
         </p>
       </section>
+    </>
+  );
+}
+
+function ApiDocsTab() {
+  const [healthy, setHealthy] = useState<"unknown" | "ok" | "down">("unknown");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${HTTP_API_BASE}/api/health`)
+      .then((r) => (r.ok ? "ok" : "down"))
+      .catch(() => "down" as const)
+      .then((s) => {
+        if (!cancelled) setHealthy(s);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section className="settings-section api-docs-section">
+      <div className="settings-section-header">
+        <h3>Local Web API</h3>
+        <span className="api-status" data-status={healthy}>
+          {healthy === "ok" ? "● online" : healthy === "down" ? "● offline" : "○ checking…"}
+        </span>
+      </div>
+      <p className="hint">
+        Conduction は起動時に <code>{HTTP_API_BASE}</code> で REST API を公開しています。
+        ローカルバインドのみ・認証なし。スクリプトや外部ツールから全パラメータを操作できます。
+      </p>
+      <p className="hint">
+        例: <code>curl -X POST {HTTP_API_BASE}/api/decks/A/play</code>
+        {" / "}
+        <code>curl {HTTP_API_BASE}/api/status</code>
+      </p>
+      <div className="api-docs-frame">
+        <iframe
+          title="Conduction API documentation"
+          src={`${HTTP_API_BASE}/swagger-ui/`}
+          className="api-docs-iframe"
+        />
+      </div>
     </section>
   );
 }

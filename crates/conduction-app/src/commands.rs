@@ -386,7 +386,7 @@ fn analyze_and_save_internal(
 }
 
 /// UI に渡すビート1拍分の DTO。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct BeatDto {
     pub position_sec: f64,
     pub is_downbeat: bool,
@@ -430,7 +430,7 @@ pub fn save_settings(
 
 // ======== Hot Cues ========
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct HotCueDto {
     pub slot: u8,
     pub position_sec: f64,

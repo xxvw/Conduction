@@ -42,7 +42,7 @@ pub enum AudioCommand {
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct DeckSnapshot {
     pub id: &'static str,
     pub state: &'static str,
@@ -71,7 +71,7 @@ pub struct DeckSnapshot {
 }
 
 /// Mixer 全体のスナップショット。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct MixerSnapshot {
     pub crossfader: f32,
     pub master_volume: f32,
@@ -80,6 +80,7 @@ pub struct MixerSnapshot {
 }
 
 /// UI 側が保持するハンドル。
+#[derive(Clone)]
 pub struct AudioHandle {
     tx: Sender<AudioCommand>,
     snapshot: Arc<ArcSwap<MixerSnapshot>>,
