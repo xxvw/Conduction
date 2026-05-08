@@ -7,6 +7,7 @@ import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
 import { useBeats } from "@/hooks/useBeats";
+import { useInterpolatedPosition } from "@/hooks/useInterpolatedPosition";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
@@ -240,6 +241,9 @@ function DeckPanel({
   const baseBpm = loadedTrack?.bpm ?? 0;
   const effectiveBpm = baseBpm > 0 ? baseBpm * snapshot.playback_speed : 0;
 
+  // mixer snapshot は 10 Hz だが、波形カーソルは 60 Hz で動かしたいので補間する。
+  const livePosSec = useInterpolatedPosition(snapshot);
+
   const downbeatRatios = useMemo(() => {
     if (!snapshot.duration_sec || snapshot.duration_sec <= 0) return [];
     return beats
@@ -273,7 +277,7 @@ function DeckPanel({
   const filename = snapshot.loaded_path?.split("/").pop() ?? "";
   const positionRatio =
     snapshot.duration_sec && snapshot.duration_sec > 0
-      ? snapshot.position_sec / snapshot.duration_sec
+      ? livePosSec / snapshot.duration_sec
       : 0;
 
   return (
@@ -342,7 +346,7 @@ function DeckPanel({
         <WaveformZoomView
           waveform={waveform}
           beats={beats}
-          positionSec={snapshot.position_sec}
+          positionSec={livePosSec}
           durationSec={snapshot.duration_sec ?? 0}
           windowSec={zoomWindowSec}
           height={72}
