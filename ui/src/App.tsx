@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import "./App.css";
 import { FxPad } from "@/components/fx/FxPad";
 import { HotCuePad } from "@/components/hotcue/HotCuePad";
-import { KeyConfigBar } from "@/components/keyconfig/KeyConfigBar";
+import { KeyConfigModal } from "@/components/keyconfig/KeyConfigModal";
 import { LoopPad } from "@/components/loop/LoopPad";
 import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
@@ -37,6 +37,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>("mix");
   const [activeDeck, setActiveDeck] = useState<DeckId>("A");
   const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
+  const [keyHelpOpen, setKeyHelpOpen] = useState<boolean>(false);
   const status = useMixerStatus(100);
   const tracksHandle = useTracks();
   const keyBindings = useKeyBindings();
@@ -238,6 +239,15 @@ export function App() {
         </nav>
         <div className="spacer" />
         <PerfHud />
+        <button
+          className="topbar-icon-btn"
+          type="button"
+          onClick={() => setKeyHelpOpen(true)}
+          aria-label="show keyboard shortcuts"
+          title="Keyboard Shortcuts"
+        >
+          ⌨ Keys
+        </button>
         <MasterSlim volume={status?.master_volume ?? 1.0} />
       </header>
 
@@ -273,13 +283,13 @@ export function App() {
         )}
       </main>
 
-      {screen === "mix" && (
-        <KeyConfigBar
-          bindings={keyBindings.bindings}
-          activeDeck={activeDeck}
-          zoomWindowSec={zoomWindowSec}
-        />
-      )}
+      <KeyConfigModal
+        open={keyHelpOpen}
+        onClose={() => setKeyHelpOpen(false)}
+        bindings={keyBindings.bindings}
+        activeDeck={activeDeck}
+        zoomWindowSec={zoomWindowSec}
+      />
     </div>
   );
 }

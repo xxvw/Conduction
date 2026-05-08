@@ -519,19 +519,95 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* --- KeyConfig bar --- */
-.keyconfig-bar {
+/* --- KeyConfig modal --- */
+.topbar-icon-btn {
+  background: transparent;
+  border: 1px solid var(--c-ink-5);
+  color: var(--c-ink-9);
+  padding: 4px var(--s-3);
+  font-family: inherit;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition: all 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.topbar-icon-btn:hover {
+  color: var(--c-ink-11);
+  background: var(--c-ink-3);
+}
+
+.keyconfig-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.keyconfig-modal {
+  background: var(--c-ink-2);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-4);
+  width: min(720px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+.keyconfig-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.keyconfig-modal-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  letter-spacing: 0.04em;
+}
+.keyconfig-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--c-ink-9);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--r-2);
+}
+.keyconfig-modal-close:hover {
+  background: var(--c-ink-3);
+  color: var(--c-ink-11);
+}
+.keyconfig-modal-status {
+  display: flex;
+  gap: var(--s-5);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-ink-1);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  font-size: var(--fs-small);
+}
+.keyconfig-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--s-3) var(--s-5);
+  font-size: var(--fs-small);
+}
+.keyconfig-modal-foot {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px var(--s-4);
-  padding: 4px var(--s-4);
+  gap: var(--s-4);
+  padding-top: var(--s-3);
   border-top: 1px solid var(--c-ink-5);
-  background: var(--c-ink-1);
-  font-size: 9px;
-  letter-spacing: 0.05em;
+  font-size: var(--fs-micro);
   color: var(--c-ink-9);
-  flex-shrink: 0;
 }
 .keyconfig-active {
   display: inline-flex;
