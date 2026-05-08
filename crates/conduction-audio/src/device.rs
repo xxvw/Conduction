@@ -80,3 +80,30 @@ impl OutputDevice {
         &self.handle
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 実機依存。ローカルで `cargo test -p conduction-audio -- --ignored list_outputs`
+    /// として手動実行する。
+    #[test]
+    #[ignore = "depends on host audio devices"]
+    fn list_outputs() {
+        let devices = OutputDevice::list_available();
+        eprintln!("Available output devices ({}):", devices.len());
+        for d in &devices {
+            eprintln!("  - {}", d);
+        }
+        assert!(!devices.is_empty(), "should have at least one output device");
+    }
+
+    #[test]
+    #[ignore = "depends on host audio devices"]
+    fn open_default_then_by_name() {
+        let default = OutputDevice::open_default().expect("open default");
+        eprintln!("default device name: {}", default.name());
+        let by_name = OutputDevice::open_by_name(default.name()).expect("open by name");
+        assert_eq!(default.name(), by_name.name());
+    }
+}

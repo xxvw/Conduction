@@ -392,7 +392,7 @@ function drawHotCues(
   for (const c of hotCues) {
     if (c.position_sec < startSec || c.position_sec > endSec) continue;
     const x = Math.round(xOf(c.position_sec));
-    const color = SLOT_COLORS[(c.slot - 1) % SLOT_COLORS.length];
+    const color = SLOT_COLORS[(c.slot - 1) % SLOT_COLORS.length] ?? "#FFFFFF";
 
     // 縦線
     ctx.strokeStyle = `${color}E0`; // 約88% alpha
