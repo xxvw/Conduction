@@ -8,6 +8,7 @@ members = [
     "crates/conduction-library",
     "crates/conduction-claude",
     "crates/conduction-download",
+    "crates/conduction-export",
     "crates/conduction-script",
     "crates/conduction-app",
 ]
@@ -66,6 +67,7 @@ conduction-conductor = { path = "crates/conduction-conductor" }
 conduction-library = { path = "crates/conduction-library" }
 conduction-claude = { path = "crates/conduction-claude" }
 conduction-download = { path = "crates/conduction-download" }
+conduction-export = { path = "crates/conduction-export" }
 conduction-script = { path = "crates/conduction-script" }
 
 [profile.release]

@@ -35,6 +35,7 @@ conduction-library.workspace = true
 uuid.workspace = true
 conduction-claude.workspace = true
 conduction-download.workspace = true
+conduction-export.workspace = true
 conduction-script.workspace = true
 
 tauri = { version = "2.0", features = [] }

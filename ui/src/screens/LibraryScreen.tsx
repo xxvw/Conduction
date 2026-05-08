@@ -1,7 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
-import { ipc } from "@/lib/ipc";
+import { ipc, type ExportPreview } from "@/lib/ipc";
 import type { DeckId } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 
@@ -69,6 +69,25 @@ export function LibraryScreen({
     [refresh],
   );
 
+  const [exportInfo, setExportInfo] = useState<
+    | { state: "idle" }
+    | { state: "previewing" }
+    | { state: "preview"; preview: ExportPreview }
+    | { state: "error"; error: string }
+  >({ state: "idle" });
+
+  const handleExportPreview = useCallback(async () => {
+    const dest = await open({ directory: true, multiple: false });
+    if (!dest || Array.isArray(dest)) return;
+    setExportInfo({ state: "previewing" });
+    try {
+      const preview = await ipc.exportPreview(dest);
+      setExportInfo({ state: "preview", preview });
+    } catch (e) {
+      setExportInfo({ state: "error", error: String(e) });
+    }
+  }, []);
+
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const handleAnalyze = useCallback(
     async (id: string) => {
@@ -101,6 +120,14 @@ export function LibraryScreen({
         <button className="btn" onClick={refresh} disabled={loading}>
           Refresh
         </button>
+        <button
+          className="btn"
+          onClick={handleExportPreview}
+          disabled={exportInfo.state === "previewing" || tracks.length === 0}
+          title="Preview a rekordbox-compatible USB export (Phase 1: dry-run only)"
+        >
+          {exportInfo.state === "previewing" ? "Previewing…" : "Export to USB…"}
+        </button>
         <span className="track-count">
           {filtered.length}
           {filtered.length !== tracks.length && <> / {tracks.length}</>} tracks
@@ -108,6 +135,52 @@ export function LibraryScreen({
       </div>
 
       {error && <p className="hint" style={{ color: "var(--c-danger)" }}>{error}</p>}
+
+      {exportInfo.state === "preview" && (
+        <div className="export-preview">
+          <header>
+            <strong>Export preview</strong>
+            <button className="chip" onClick={() => setExportInfo({ state: "idle" })}>
+              ×
+            </button>
+          </header>
+          <dl>
+            <div>
+              <dt>Destination</dt>
+              <dd className="mono">{exportInfo.preview.root}</dd>
+            </div>
+            <div>
+              <dt>Tracks</dt>
+              <dd>{exportInfo.preview.track_count}</dd>
+            </div>
+            <div>
+              <dt>Audio bytes</dt>
+              <dd>{formatBytes(exportInfo.preview.estimated_audio_bytes)}</dd>
+            </div>
+            <div>
+              <dt>With beatgrid</dt>
+              <dd>{exportInfo.preview.tracks_with_beatgrid}</dd>
+            </div>
+            <div>
+              <dt>With waveform</dt>
+              <dd>{exportInfo.preview.tracks_with_waveform}</dd>
+            </div>
+            <div>
+              <dt>Hot cues</dt>
+              <dd>{exportInfo.preview.total_hot_cues}</dd>
+            </div>
+          </dl>
+          <p className="hint">
+            Phase 1: プラン構築までの dry-run。実際の <code>export.pdb</code> /{" "}
+            <code>.DAT</code> / <code>.EXT</code> 書き出しは Phase 2 以降で実装します。
+          </p>
+        </div>
+      )}
+      {exportInfo.state === "error" && (
+        <p className="hint" style={{ color: "var(--c-danger)" }}>
+          Export preview failed: {exportInfo.error}
+        </p>
+      )}
 
       <div className="tracklist">
         <table>
@@ -203,4 +276,16 @@ function formatSec(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
 }

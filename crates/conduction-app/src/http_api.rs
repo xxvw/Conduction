@@ -58,6 +58,7 @@ use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
 use crate::youtube;
 use conduction_download::{AudioFormat, VideoSearchResult};
+use conduction_export::{ExportPreview, ExportReport};
 
 pub const DEFAULT_HTTP_PORT: u16 = 38127;
 
@@ -144,6 +145,8 @@ fn build_router(state: AppState) -> Router {
         .route("/api/youtube/available", get(yt_available))
         .route("/api/youtube/search", get(yt_search))
         .route("/api/youtube/download", post(yt_download))
+        .route("/api/export/preview", post(export_preview))
+        .route("/api/export/execute", post(export_execute))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -772,6 +775,60 @@ async fn yt_download(
     Ok(Json(track))
 }
 
+// ---- Export (rekordbox-compatible USB) ---------------------------------
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct ExportRequest {
+    /// USB ドライブ等の絶対パス。
+    pub destination: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/export/preview",
+    request_body = ExportRequest,
+    responses((status = 200, body = ExportPreview))
+)]
+async fn export_preview(
+    State(s): State<AppState>,
+    Json(body): Json<ExportRequest>,
+) -> ApiResult<Json<ExportPreview>> {
+    let dest = std::path::PathBuf::from(body.destination);
+    let library = s.library.clone();
+    let preview = tokio::task::spawn_blocking(move || -> Result<ExportPreview, String> {
+        let plan = library
+            .with_library(|lib| conduction_export::build_plan(lib, dest).map_err(|e| e.to_string()))?;
+        Ok(ExportPreview::from_plan(&plan))
+    })
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))?
+    .map_err(ApiError::internal)?;
+    Ok(Json(preview))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/export/execute",
+    request_body = ExportRequest,
+    responses((status = 200, body = ExportReport))
+)]
+async fn export_execute(
+    State(s): State<AppState>,
+    Json(body): Json<ExportRequest>,
+) -> ApiResult<Json<ExportReport>> {
+    let dest = std::path::PathBuf::from(body.destination);
+    let library = s.library.clone();
+    let report = tokio::task::spawn_blocking(move || -> Result<ExportReport, String> {
+        let plan = library
+            .with_library(|lib| conduction_export::build_plan(lib, dest).map_err(|e| e.to_string()))?;
+        conduction_export::execute(&plan).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))?
+    .map_err(ApiError::internal)?;
+    Ok(Json(report))
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -849,6 +906,8 @@ pub struct HealthResponse {
         yt_available,
         yt_search,
         yt_download,
+        export_preview,
+        export_execute,
     ),
     components(schemas(
         HealthResponse,
@@ -877,6 +936,9 @@ pub struct HealthResponse {
         AudioFormat,
         YtAvailableResponse,
         YtDownloadRequest,
+        ExportRequest,
+        ExportPreview,
+        ExportReport,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
@@ -885,6 +947,7 @@ pub struct HealthResponse {
         (name = "library", description = "Track import / waveform / hot cues"),
         (name = "system", description = "Audio devices / resources / settings"),
         (name = "youtube", description = "yt-dlp search and download"),
+        (name = "export", description = "rekordbox-compatible USB export (Phase 1: skeleton)"),
     )
 )]
 struct ApiDoc;

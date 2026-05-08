@@ -82,6 +82,8 @@ pub fn run() {
             commands::yt_dlp_available,
             commands::yt_search,
             commands::yt_download,
+            commands::export_preview,
+            commands::export_execute,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

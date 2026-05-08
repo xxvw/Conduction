@@ -132,6 +132,14 @@ export const ipc = {
     return call<void>("delete_hot_cue", { trackId, slot });
   },
 
+  // --- USB Export (rekordbox-compatible) ---
+  exportPreview(destination: string) {
+    return call<ExportPreview>("export_preview", { destination });
+  },
+  exportExecute(destination: string) {
+    return call<ExportReport>("export_execute", { destination });
+  },
+
   // --- YouTube (yt-dlp) ---
   ytDlpAvailable() {
     return call<boolean>("yt_dlp_available");
@@ -158,6 +166,20 @@ export interface YtDoneEvent {
 }
 
 export type AudioFormat = "m4a" | "mp3" | "opus" | "wav" | "flac";
+
+export interface ExportPreview {
+  root: string;
+  track_count: number;
+  estimated_audio_bytes: number;
+  tracks_with_beatgrid: number;
+  tracks_with_waveform: number;
+  total_hot_cues: number;
+}
+
+export interface ExportReport {
+  tracks_written: number;
+  bytes_written: number;
+}
 
 export interface VideoSearchResult {
   id: string;

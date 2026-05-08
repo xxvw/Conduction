@@ -514,6 +514,32 @@ pub fn delete_track(library: State<'_, LibraryHandle>, id: String) -> Result<(),
     })
 }
 
+// ======== USB Export (rekordbox-compatible) ========
+
+#[tauri::command]
+pub fn export_preview(
+    library: State<'_, LibraryHandle>,
+    destination: String,
+) -> Result<conduction_export::ExportPreview, String> {
+    let dest = PathBuf::from(destination);
+    let plan = library.with_library(|lib| {
+        conduction_export::build_plan(lib, dest).map_err(|e| e.to_string())
+    })?;
+    Ok(conduction_export::ExportPreview::from_plan(&plan))
+}
+
+#[tauri::command]
+pub fn export_execute(
+    library: State<'_, LibraryHandle>,
+    destination: String,
+) -> Result<conduction_export::ExportReport, String> {
+    let dest = PathBuf::from(destination);
+    let plan = library.with_library(|lib| {
+        conduction_export::build_plan(lib, dest).map_err(|e| e.to_string())
+    })?;
+    conduction_export::execute(&plan).map_err(|e| e.to_string())
+}
+
 // ======== YouTube ========
 
 #[tauri::command]
