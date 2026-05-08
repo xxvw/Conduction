@@ -2,6 +2,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
 import "./App.css";
+import { FxPad } from "@/components/fx/FxPad";
 import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigBar } from "@/components/keyconfig/KeyConfigBar";
 import { LoopPad } from "@/components/loop/LoopPad";
@@ -623,6 +624,8 @@ function DeckPanel({
           </button>
         </div>
       </div>
+
+      <FxPad deckId={deck} snapshot={snapshot} />
 
       <LoopPad
         deckId={deck}

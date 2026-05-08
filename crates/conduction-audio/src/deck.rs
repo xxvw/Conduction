@@ -1,12 +1,14 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rodio::{Decoder, Sink, Source};
 use tracing::debug;
 
 use crate::device::OutputDevice;
+use crate::dsp::{DjEffectSource, DspParams};
 use crate::error::{AudioError, AudioResult};
 
 /// チャンネルボリュームの受け入れ範囲。0 〜 2.0（+6dB 相当）。
@@ -91,6 +93,9 @@ pub struct Deck {
 
     // --- ループ ---
     loop_state: LoopState,
+
+    // --- DSP（EQ / Filter / Echo / Reverb） ---
+    dsp_params: Arc<DspParams>,
 }
 
 /// `Deck` のループ状態。`start` / `end` は `None` 時は未設定。
@@ -122,7 +127,13 @@ impl Deck {
             tempo_adjust: 0.0,
             position_offset: Duration::ZERO,
             loop_state: LoopState::default(),
+            dsp_params: DspParams::new_arc(),
         })
+    }
+
+    /// DSP パラメータの共有ハンドル。UI スレッドが値を書き換える。
+    pub fn dsp_params(&self) -> Arc<DspParams> {
+        self.dsp_params.clone()
     }
 
     pub fn id(&self) -> DeckId {
@@ -146,7 +157,10 @@ impl Deck {
         self.sink.pause();
         self.sink.set_volume(self.effective_volume);
         self.sink.set_speed(self.playback_speed());
-        self.sink.append(decoder);
+        // DSP chain: Decoder → f32 → DjEffectSource → Sink
+        let f32_source = decoder.convert_samples::<f32>();
+        let with_dsp = DjEffectSource::new(f32_source, self.dsp_params.clone());
+        self.sink.append(with_dsp);
 
         self.started_at = None;
         self.paused_accum = Duration::ZERO;

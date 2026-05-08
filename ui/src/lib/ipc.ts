@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { BeatDto } from "@/types/beat";
 import type { HotCueDto } from "@/types/hotcue";
-import type { DeckId, MixerSnapshot } from "@/types/mixer";
+import type { DeckId, EqBand, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 import type { WaveformPreview } from "@/types/waveform";
 
@@ -50,6 +50,18 @@ export const ipc = {
   },
   loopClear(deck: DeckId) {
     return call<void>("loop_clear", { deck });
+  },
+  setEq(deck: DeckId, band: EqBand, db: number) {
+    return call<void>("set_eq", { deck, band, db });
+  },
+  setFilter(deck: DeckId, value: number) {
+    return call<void>("set_filter", { deck, value });
+  },
+  setEcho(deck: DeckId, wet: number, timeMs: number, feedback: number) {
+    return call<void>("set_echo", { deck, wet, timeMs, feedback });
+  },
+  setReverb(deck: DeckId, wet: number, room: number) {
+    return call<void>("set_reverb", { deck, wet, room });
   },
   setCrossfader(position: number) {
     return call<void>("set_crossfader", { position });

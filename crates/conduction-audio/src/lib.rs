@@ -9,10 +9,12 @@
 
 pub mod deck;
 pub mod device;
+pub mod dsp;
 pub mod error;
 pub mod mixer;
 
 pub use deck::{Deck, DeckId, LoopState, TempoRange, CHANNEL_VOLUME_MAX, CHANNEL_VOLUME_MIN};
+pub use dsp::DspParams;
 pub use device::OutputDevice;
 pub use error::{AudioError, AudioResult};
 pub use mixer::{

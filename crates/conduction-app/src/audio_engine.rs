@@ -32,6 +32,12 @@ pub enum AudioCommand {
     LoopOut { deck: DeckId, position_sec: f64 },
     LoopToggle(DeckId),
     LoopClear(DeckId),
+    SetEqLow { deck: DeckId, db: f32 },
+    SetEqMid { deck: DeckId, db: f32 },
+    SetEqHigh { deck: DeckId, db: f32 },
+    SetFilter { deck: DeckId, value: f32 },
+    SetEcho { deck: DeckId, wet: f32, time_ms: f32, feedback: f32 },
+    SetReverb { deck: DeckId, wet: f32, room: f32 },
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -50,6 +56,15 @@ pub struct DeckSnapshot {
     pub loop_start_sec: Option<f64>,
     pub loop_end_sec: Option<f64>,
     pub loop_active: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
+    pub filter: f32,
+    pub echo_wet: f32,
+    pub echo_time_ms: f32,
+    pub echo_feedback: f32,
+    pub reverb_wet: f32,
+    pub reverb_room: f32,
 }
 
 /// Mixer 全体のスナップショット。
@@ -186,6 +201,29 @@ fn apply_command(
         AudioCommand::LoopClear(deck) => {
             mixer.deck(deck).clear_loop();
         }
+        AudioCommand::SetEqLow { deck, db } => {
+            mixer.deck(deck).dsp_params().set_eq_low_db(db);
+        }
+        AudioCommand::SetEqMid { deck, db } => {
+            mixer.deck(deck).dsp_params().set_eq_mid_db(db);
+        }
+        AudioCommand::SetEqHigh { deck, db } => {
+            mixer.deck(deck).dsp_params().set_eq_high_db(db);
+        }
+        AudioCommand::SetFilter { deck, value } => {
+            mixer.deck(deck).dsp_params().set_filter(value);
+        }
+        AudioCommand::SetEcho { deck, wet, time_ms, feedback } => {
+            let p = mixer.deck(deck).dsp_params();
+            p.set_echo_wet(wet);
+            p.set_echo_time_ms(time_ms);
+            p.set_echo_feedback(feedback);
+        }
+        AudioCommand::SetReverb { deck, wet, room } => {
+            let p = mixer.deck(deck).dsp_params();
+            p.set_reverb_wet(wet);
+            p.set_reverb_room(room);
+        }
     }
 }
 
@@ -213,6 +251,7 @@ fn build_deck_snapshot(
     let state = deck_state(mixer, id);
     let deck = mixer.deck(id);
     let loop_state = deck.loop_state();
+    let dsp = deck.dsp_params();
     DeckSnapshot {
         id: deck_label(id),
         state,
@@ -227,6 +266,15 @@ fn build_deck_snapshot(
         loop_start_sec: loop_state.start_sec,
         loop_end_sec: loop_state.end_sec,
         loop_active: loop_state.active,
+        eq_low_db: dsp.eq_low_db(),
+        eq_mid_db: dsp.eq_mid_db(),
+        eq_high_db: dsp.eq_high_db(),
+        filter: dsp.filter(),
+        echo_wet: dsp.echo_wet(),
+        echo_time_ms: dsp.echo_time_ms(),
+        echo_feedback: dsp.echo_feedback(),
+        reverb_wet: dsp.reverb_wet(),
+        reverb_room: dsp.reverb_room(),
     }
 }
 
@@ -274,6 +322,15 @@ fn empty_deck_snapshot(id: &'static str) -> DeckSnapshot {
         loop_start_sec: None,
         loop_end_sec: None,
         loop_active: false,
+        eq_low_db: 0.0,
+        eq_mid_db: 0.0,
+        eq_high_db: 0.0,
+        filter: 0.0,
+        echo_wet: 0.0,
+        echo_time_ms: 375.0,
+        echo_feedback: 0.4,
+        reverb_wet: 0.0,
+        reverb_room: 0.5,
     }
 }
 

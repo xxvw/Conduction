@@ -101,6 +101,63 @@ pub fn loop_clear(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
 }
 
 #[tauri::command]
+pub fn set_eq(
+    audio: State<'_, AudioHandle>,
+    deck: String,
+    band: String,
+    db: f32,
+) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    let cmd = match band.as_str() {
+        "low" | "Low" => AudioCommand::SetEqLow { deck: id, db },
+        "mid" | "Mid" => AudioCommand::SetEqMid { deck: id, db },
+        "high" | "High" => AudioCommand::SetEqHigh { deck: id, db },
+        other => return Err(format!("invalid eq band: {other}")),
+    };
+    send(&audio, cmd)
+}
+
+#[tauri::command]
+pub fn set_filter(audio: State<'_, AudioHandle>, deck: String, value: f32) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::SetFilter { deck: id, value })
+}
+
+#[tauri::command]
+pub fn set_echo(
+    audio: State<'_, AudioHandle>,
+    deck: String,
+    wet: f32,
+    time_ms: f32,
+    feedback: f32,
+) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(
+        &audio,
+        AudioCommand::SetEcho {
+            deck: id,
+            wet,
+            time_ms,
+            feedback,
+        },
+    )
+}
+
+#[tauri::command]
+pub fn set_reverb(
+    audio: State<'_, AudioHandle>,
+    deck: String,
+    wet: f32,
+    room: f32,
+) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(
+        &audio,
+        AudioCommand::SetReverb { deck: id, wet, room },
+    )
+}
+
+#[tauri::command]
 pub fn set_crossfader(audio: State<'_, AudioHandle>, position: f32) -> CmdResult {
     send(&audio, AudioCommand::SetCrossfader(position))
 }

@@ -18,7 +18,18 @@ export interface DeckSnapshot {
   loop_start_sec: number | null;
   loop_end_sec: number | null;
   loop_active: boolean;
+  eq_low_db: number;
+  eq_mid_db: number;
+  eq_high_db: number;
+  filter: number;
+  echo_wet: number;
+  echo_time_ms: number;
+  echo_feedback: number;
+  reverb_wet: number;
+  reverb_room: number;
 }
+
+export type EqBand = "low" | "mid" | "high";
 
 export interface MixerSnapshot {
   crossfader: number;
