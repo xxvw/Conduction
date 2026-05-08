@@ -2,11 +2,13 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
 import "./App.css";
+import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigBar } from "@/components/keyconfig/KeyConfigBar";
 import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
 import { useBeats } from "@/hooks/useBeats";
+import { useHotCues } from "@/hooks/useHotCues";
 import { useInterpolatedPosition } from "@/hooks/useInterpolatedPosition";
 import { useKeyBindings } from "@/hooks/useKeyBindings";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
@@ -53,6 +55,8 @@ export function App() {
   }, [status?.deck_b.loaded_path, trackByPath]);
   const beatsA = useBeats(deckATrackId);
   const beatsB = useBeats(deckBTrackId);
+  const hotCuesA = useHotCues(deckATrackId);
+  const hotCuesB = useHotCues(deckBTrackId);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -95,6 +99,22 @@ export function App() {
       if (action === "play-pause") {
         if (snap.state === "play") void ipc.pause(activeDeck);
         else void ipc.play(activeDeck);
+        return;
+      }
+
+      // Hot Cue: 1..8
+      if (action.startsWith("hotcue-")) {
+        const slot = Number(action.slice("hotcue-".length));
+        if (!Number.isFinite(slot) || slot < 1 || slot > 8) return;
+        const cuesHandle = activeDeck === "A" ? hotCuesA : hotCuesB;
+        if (e.altKey) {
+          void cuesHandle.remove(slot);
+        } else if (e.shiftKey) {
+          void cuesHandle.set(slot, snap.position_sec);
+        } else {
+          const cue = cuesHandle.get(slot);
+          if (cue) void ipc.seek(activeDeck, cue.position_sec);
+        }
         return;
       }
 
@@ -148,7 +168,7 @@ export function App() {
       );
       void ipc.seek(activeDeck, target);
     },
-    [status, activeDeck, trackByPath, beatsA, beatsB],
+    [status, activeDeck, trackByPath, beatsA, beatsB, hotCuesA, hotCuesB],
   );
 
   useShortcuts({ bindings: keyBindings.bindings, onAction: handleShortcut });
@@ -195,6 +215,8 @@ export function App() {
             zoomWindowSec={zoomWindowSec}
             beatsA={beatsA}
             beatsB={beatsB}
+            hotCuesA={hotCuesA}
+            hotCuesB={hotCuesB}
           />
         )}
         {screen === "library" && (
@@ -234,6 +256,8 @@ function MixScreen({
   zoomWindowSec,
   beatsA,
   beatsB,
+  hotCuesA,
+  hotCuesB,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
@@ -242,6 +266,8 @@ function MixScreen({
   zoomWindowSec: number;
   beatsA: import("@/types/beat").BeatDto[];
   beatsB: import("@/types/beat").BeatDto[];
+  hotCuesA: ReturnType<typeof useHotCues>;
+  hotCuesB: ReturnType<typeof useHotCues>;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -253,6 +279,7 @@ function MixScreen({
         onActivate={() => onSelectDeck("A")}
         zoomWindowSec={zoomWindowSec}
         beats={beatsA}
+        hotCues={hotCuesA}
       />
       <DeckPanel
         snapshot={status.deck_b}
@@ -261,6 +288,7 @@ function MixScreen({
         onActivate={() => onSelectDeck("B")}
         zoomWindowSec={zoomWindowSec}
         beats={beatsB}
+        hotCues={hotCuesB}
       />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
@@ -291,6 +319,7 @@ function DeckPanel({
   onActivate,
   zoomWindowSec,
   beats,
+  hotCues,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
@@ -298,6 +327,7 @@ function DeckPanel({
   onActivate: () => void;
   zoomWindowSec: number;
   beats: import("@/types/beat").BeatDto[];
+  hotCues: ReturnType<typeof useHotCues>;
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
@@ -405,6 +435,7 @@ function DeckPanel({
         <WaveformZoomView
           waveform={waveform}
           beats={beats}
+          hotCues={hotCues.cues}
           positionSec={livePosSec}
           durationSec={snapshot.duration_sec ?? 0}
           windowSec={zoomWindowSec}
@@ -497,6 +528,18 @@ function DeckPanel({
           </button>
         </div>
       </div>
+
+      <HotCuePad
+        deckId={deck}
+        cues={hotCues.cues}
+        currentPositionSec={snapshot.position_sec}
+        onJump={(slot) => {
+          const cue = hotCues.get(slot);
+          if (cue) void ipc.seek(deck, cue.position_sec);
+        }}
+        onSet={(slot, posSec) => void hotCues.set(slot, posSec)}
+        onDelete={(slot) => void hotCues.remove(slot)}
+      />
     </section>
   );
 }

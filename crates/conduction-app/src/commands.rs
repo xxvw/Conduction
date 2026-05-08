@@ -333,6 +333,60 @@ pub fn save_settings(
     settings.set(new_settings).map_err(|e| e.to_string())
 }
 
+// ======== Hot Cues ========
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HotCueDto {
+    pub slot: u8,
+    pub position_sec: f64,
+}
+
+#[tauri::command]
+pub fn list_hot_cues(
+    library: State<'_, LibraryHandle>,
+    track_id: String,
+) -> Result<Vec<HotCueDto>, String> {
+    let uuid = Uuid::parse_str(&track_id).map_err(|e| format!("invalid track id: {e}"))?;
+    let id = TrackId::from_uuid(uuid);
+    library.with_library(|lib| {
+        lib.list_hot_cues(id)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|(slot, position_sec)| HotCueDto { slot, position_sec })
+                    .collect()
+            })
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+pub fn set_hot_cue(
+    library: State<'_, LibraryHandle>,
+    track_id: String,
+    slot: u8,
+    position_sec: f64,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&track_id).map_err(|e| format!("invalid track id: {e}"))?;
+    let id = TrackId::from_uuid(uuid);
+    library.with_library(|lib| {
+        lib.set_hot_cue(id, slot, position_sec)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+pub fn delete_hot_cue(
+    library: State<'_, LibraryHandle>,
+    track_id: String,
+    slot: u8,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&track_id).map_err(|e| format!("invalid track id: {e}"))?;
+    let id = TrackId::from_uuid(uuid);
+    library.with_library(|lib| {
+        lib.delete_hot_cue(id, slot).map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command]
 pub fn get_track_beats(
     library: State<'_, LibraryHandle>,

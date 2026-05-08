@@ -300,6 +300,59 @@ impl Library {
         Ok(beats)
     }
 
+    // -------- Hot Cues --------
+
+    /// Hot Cue (slot 1..=8) を upsert で保存。
+    pub fn set_hot_cue(
+        &self,
+        track_id: TrackId,
+        slot: u8,
+        position_sec: f64,
+    ) -> LibraryResult<()> {
+        if !(1..=8).contains(&slot) {
+            return Err(LibraryError::Unsupported(format!(
+                "hot cue slot {slot} out of range 1..=8"
+            )));
+        }
+        let now = dt_to_str(Utc::now());
+        self.conn.execute(
+            "INSERT INTO hot_cues (track_id, slot, position_sec, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(track_id, slot) DO UPDATE SET
+                position_sec = excluded.position_sec,
+                created_at = excluded.created_at",
+            params![
+                track_id.as_uuid().to_string(),
+                slot as i64,
+                position_sec,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_hot_cue(&self, track_id: TrackId, slot: u8) -> LibraryResult<()> {
+        self.conn.execute(
+            "DELETE FROM hot_cues WHERE track_id = ?1 AND slot = ?2",
+            params![track_id.as_uuid().to_string(), slot as i64],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_hot_cues(&self, track_id: TrackId) -> LibraryResult<Vec<(u8, f64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT slot, position_sec FROM hot_cues WHERE track_id = ?1 ORDER BY slot ASC",
+        )?;
+        let rows = stmt
+            .query_map(params![track_id.as_uuid().to_string()], |row| {
+                let slot: i64 = row.get(0)?;
+                let pos: f64 = row.get(1)?;
+                Ok((slot as u8, pos))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     // -------- Waveform preview --------
 
     pub fn save_waveform(
@@ -622,6 +675,38 @@ mod tests {
         let lib = Library::in_memory().unwrap();
         let id = conduction_core::TrackId::new();
         assert!(lib.load_waveform(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn hot_cues_upsert_and_list() {
+        let lib = Library::in_memory().unwrap();
+        let track = sample_track();
+        lib.insert_track(&track).unwrap();
+
+        lib.set_hot_cue(track.id, 1, 12.5).unwrap();
+        lib.set_hot_cue(track.id, 3, 30.0).unwrap();
+        lib.set_hot_cue(track.id, 1, 15.0).unwrap(); // upsert
+
+        let cues = lib.list_hot_cues(track.id).unwrap();
+        assert_eq!(cues, vec![(1u8, 15.0), (3u8, 30.0)]);
+
+        lib.delete_hot_cue(track.id, 1).unwrap();
+        let cues = lib.list_hot_cues(track.id).unwrap();
+        assert_eq!(cues, vec![(3u8, 30.0)]);
+
+        // 範囲外の slot は弾く
+        let err = lib.set_hot_cue(track.id, 9, 0.0).unwrap_err();
+        assert!(matches!(err, LibraryError::Unsupported(_)));
+    }
+
+    #[test]
+    fn hot_cues_cascade_on_track_delete() {
+        let lib = Library::in_memory().unwrap();
+        let track = sample_track();
+        lib.insert_track(&track).unwrap();
+        lib.set_hot_cue(track.id, 1, 0.0).unwrap();
+        lib.delete_track(track.id).unwrap();
+        assert!(lib.list_hot_cues(track.id).unwrap().is_empty());
     }
 
     #[test]

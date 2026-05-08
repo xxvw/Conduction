@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::error::{LibraryError, LibraryResult};
 
 /// 現在のスキーマバージョン。マイグレーションを追加する際にインクリメント。
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 /// スキーマメタテーブル + 全テーブルを作成する（バージョン判定 + マイグレーション）。
 pub fn initialize(conn: &Connection) -> LibraryResult<()> {
@@ -28,7 +28,13 @@ pub fn initialize(conn: &Connection) -> LibraryResult<()> {
         Some(v) if v == CURRENT_SCHEMA_VERSION => Ok(()),
         Some(1) => {
             migrate_v1_to_v2(conn)?;
-            set_version(conn, 2)?;
+            migrate_v2_to_v3(conn)?;
+            set_version(conn, CURRENT_SCHEMA_VERSION)?;
+            Ok(())
+        }
+        Some(2) => {
+            migrate_v2_to_v3(conn)?;
+            set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
         Some(other) => Err(LibraryError::Schema(format!(
@@ -37,6 +43,7 @@ pub fn initialize(conn: &Connection) -> LibraryResult<()> {
         None => {
             create_v1_tables(conn)?;
             migrate_v1_to_v2(conn)?;
+            migrate_v2_to_v3(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
@@ -129,6 +136,23 @@ fn migrate_v1_to_v2(conn: &Connection) -> LibraryResult<()> {
     Ok(())
 }
 
+/// v3: Hot Cue（8 スロット、track_id × slot で一意）を保持する `hot_cues` テーブルを追加。
+fn migrate_v2_to_v3(conn: &Connection) -> LibraryResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS hot_cues (
+          track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+          slot INTEGER NOT NULL CHECK (slot BETWEEN 1 AND 8),
+          position_sec REAL NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (track_id, slot)
+        );
+        CREATE INDEX IF NOT EXISTS idx_hot_cues_track ON hot_cues(track_id);
+        "#,
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,9 +191,9 @@ mod tests {
         matches!(err, LibraryError::Schema(_));
     }
 
-    /// v1 のレガシー DB を v2 にマイグレーションできること。
+    /// v1 のレガシー DB を最新版にマイグレーションできること。
     #[test]
-    fn migrates_from_v1_to_v2() {
+    fn migrates_from_v1_to_latest() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE schema_meta (id INTEGER PRIMARY KEY, version INTEGER);
@@ -195,12 +219,16 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(v, 2);
+        assert_eq!(v, CURRENT_SCHEMA_VERSION);
 
-        // waveforms テーブルが存在することを SELECT で検証。
-        let count: i64 = conn
+        // 最新で導入された両テーブルが存在することを SELECT で検証。
+        let wf_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM waveforms", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 0);
+        assert_eq!(wf_count, 0);
+        let hc_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM hot_cues", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(hc_count, 0);
     }
 }

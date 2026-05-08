@@ -207,6 +207,61 @@
 .tempo-pct { color: var(--c-ink-11); }
 .tempo-bpm { color: var(--c-ink-9); }
 
+/* --- Hot Cue Pad --- */
+.hotcue-pad {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--s-2);
+}
+.hotcue-pad-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--s-3) 0;
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-3);
+  color: var(--c-ink-11);
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.hotcue-pad-btn:hover {
+  border-color: var(--c-accent);
+}
+.hotcue-pad-btn[data-empty="true"] {
+  color: var(--c-ink-7);
+  background: var(--c-ink-2);
+}
+.hotcue-pad-btn[data-empty="false"] {
+  /* スロット色は inline ではなく nth-child で固定（rekordbox 互換の8色） */
+  color: var(--c-ink-0);
+  background: var(--c-ink-3);
+  border-color: var(--c-ink-4);
+}
+.hotcue-pad-btn:nth-child(1)[data-empty="false"] { background: #48E0F4; border-color: #48E0F4; }
+.hotcue-pad-btn:nth-child(2)[data-empty="false"] { background: #FFC547; border-color: #FFC547; }
+.hotcue-pad-btn:nth-child(3)[data-empty="false"] { background: #7AE655; border-color: #7AE655; }
+.hotcue-pad-btn:nth-child(4)[data-empty="false"] { background: #E84A5C; border-color: #E84A5C; color: #FFF; }
+.hotcue-pad-btn:nth-child(5)[data-empty="false"] { background: #FF7A33; border-color: #FF7A33; }
+.hotcue-pad-btn:nth-child(6)[data-empty="false"] { background: #A98AFF; border-color: #A98AFF; color: #0F0F18; }
+.hotcue-pad-btn:nth-child(7)[data-empty="false"] { background: #FF6BB1; border-color: #FF6BB1; color: #0F0F18; }
+.hotcue-pad-btn:nth-child(8)[data-empty="false"] { background: #3E96FF; border-color: #3E96FF; color: #FFF; }
+
+.hotcue-slot-num {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.hotcue-slot-pos {
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
 /* --- Performance HUD --- */
 .perf-hud {
   display: inline-flex;

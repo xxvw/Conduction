@@ -50,6 +50,9 @@ pub fn run() {
             commands::get_resource_stats,
             commands::get_settings,
             commands::save_settings,
+            commands::list_hot_cues,
+            commands::set_hot_cue,
+            commands::delete_hot_cue,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

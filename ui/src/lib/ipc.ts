@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { BeatDto } from "@/types/beat";
+import type { HotCueDto } from "@/types/hotcue";
 import type { DeckId, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 import type { WaveformPreview } from "@/types/waveform";
@@ -88,6 +89,17 @@ export const ipc = {
   },
   saveSettings(settings: AppSettings) {
     return call<void>("save_settings", { newSettings: settings });
+  },
+
+  // --- Hot Cues ---
+  listHotCues(trackId: string) {
+    return call<HotCueDto[]>("list_hot_cues", { trackId });
+  },
+  setHotCue(trackId: string, slot: number, positionSec: number) {
+    return call<void>("set_hot_cue", { trackId, slot, positionSec });
+  },
+  deleteHotCue(trackId: string, slot: number) {
+    return call<void>("delete_hot_cue", { trackId, slot });
   },
 };
 

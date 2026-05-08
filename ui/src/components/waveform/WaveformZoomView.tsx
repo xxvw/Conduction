@@ -1,11 +1,13 @@
 import React, { useEffect, useRef } from "react";
 
 import type { BeatDto } from "@/types/beat";
+import type { HotCueDto } from "@/types/hotcue";
 import type { WaveformPreview } from "@/types/waveform";
 
 interface WaveformZoomViewProps {
   waveform: WaveformPreview | null;
   beats: BeatDto[];
+  hotCues?: HotCueDto[];
   /** 再生位置（秒）。中央に固定される。 */
   positionSec: number;
   /** 楽曲全長（秒）。 */
@@ -30,6 +32,7 @@ interface WaveformZoomViewProps {
 export function WaveformZoomView({
   waveform,
   beats,
+  hotCues,
   positionSec,
   durationSec,
   windowSec = 4,
@@ -87,8 +90,11 @@ export function WaveformZoomView({
     }
 
     drawBeatRibbons(ctx, beats, startSec, endSec, xOf, cssW, height, markerTop, markerBottom);
+    if (hotCues && hotCues.length > 0) {
+      drawHotCues(ctx, hotCues, startSec, endSec, xOf, height, markerTop, markerBottom);
+    }
     drawCenterCursor(ctx, cssW, height);
-  }, [waveform, beats, positionSec, durationSec, windowSec, height]);
+  }, [waveform, beats, hotCues, positionSec, durationSec, windowSec, height]);
 
   return (
     <canvas
@@ -262,6 +268,59 @@ function drawBeatRibbons(
       ctx.fillRect(x - w / 2, 0, w, topH);
       ctx.fillRect(x - w / 2, innerBottom, w, bottomH);
     }
+  }
+}
+
+/** Hot Cue マーカー: 縦線 + 上端のスロット番号付きフラグ。色はスロットごとに固定。 */
+function drawHotCues(
+  ctx: CanvasRenderingContext2D,
+  hotCues: HotCueDto[],
+  startSec: number,
+  endSec: number,
+  xOf: (sec: number) => number,
+  height: number,
+  topH: number,
+  bottomH: number,
+) {
+  // rekordbox 互換のスロット色（slot 1..8）
+  const SLOT_COLORS = [
+    "#48E0F4", // 1 cyan
+    "#FFC547", // 2 yellow
+    "#7AE655", // 3 green
+    "#E84A5C", // 4 red
+    "#FF7A33", // 5 orange
+    "#A98AFF", // 6 violet
+    "#FF6BB1", // 7 pink
+    "#3E96FF", // 8 blue
+  ];
+
+  for (const c of hotCues) {
+    if (c.position_sec < startSec || c.position_sec > endSec) continue;
+    const x = Math.round(xOf(c.position_sec));
+    const color = SLOT_COLORS[(c.slot - 1) % SLOT_COLORS.length];
+
+    // 縦線
+    ctx.strokeStyle = `${color}E0`; // 約88% alpha
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, topH);
+    ctx.lineTo(x + 0.5, height - bottomH);
+    ctx.stroke();
+
+    // 上端の旗（数字入りの小さな矩形）
+    ctx.fillStyle = color;
+    const flagW = 16;
+    const flagH = topH;
+    ctx.fillRect(x, 0, flagW, flagH);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.font = "bold 9px JetBrains Mono, monospace";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(String(c.slot), x + flagW / 2, flagH / 2 + 0.5);
+
+    // 下端マーカー（同色、細め）
+    ctx.fillStyle = color;
+    ctx.fillRect(x - 1, height - bottomH, 3, bottomH);
   }
 }
 

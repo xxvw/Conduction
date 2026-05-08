@@ -11,7 +11,15 @@ export type ShortcutAction =
   | "focus-deck-b"
   | "zoom-in"
   | "zoom-out"
-  | "play-pause";
+  | "play-pause"
+  | "hotcue-1"
+  | "hotcue-2"
+  | "hotcue-3"
+  | "hotcue-4"
+  | "hotcue-5"
+  | "hotcue-6"
+  | "hotcue-7"
+  | "hotcue-8";
 
 export interface ShortcutBinding {
   key: string;
@@ -30,9 +38,17 @@ export const DEFAULT_BINDINGS: ShortcutBinding[] = [
   { key: "l",          action: "seek-fwd-4",  label: "4 beats fwd"  },
   { key: "ArrowUp",    action: "zoom-in",     label: "zoom in"      },
   { key: "ArrowDown",  action: "zoom-out",    label: "zoom out"     },
-  { key: "1",          action: "focus-deck-a", label: "focus Deck A" },
-  { key: "2",          action: "focus-deck-b", label: "focus Deck B" },
+  { key: "q",          action: "focus-deck-a", label: "focus Deck A" },
+  { key: "w",          action: "focus-deck-b", label: "focus Deck B" },
   { key: " ",          action: "play-pause",   label: "play / pause" },
+  { key: "1",          action: "hotcue-1",    label: "Hot Cue 1"     },
+  { key: "2",          action: "hotcue-2",    label: "Hot Cue 2"     },
+  { key: "3",          action: "hotcue-3",    label: "Hot Cue 3"     },
+  { key: "4",          action: "hotcue-4",    label: "Hot Cue 4"     },
+  { key: "5",          action: "hotcue-5",    label: "Hot Cue 5"     },
+  { key: "6",          action: "hotcue-6",    label: "Hot Cue 6"     },
+  { key: "7",          action: "hotcue-7",    label: "Hot Cue 7"     },
+  { key: "8",          action: "hotcue-8",    label: "Hot Cue 8"     },
 ];
 
 /** ズームレベル（秒）。要素は降順 (zoom-in 方向)。 */
