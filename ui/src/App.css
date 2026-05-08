@@ -50,10 +50,10 @@
   background: var(--c-ink-2);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-4);
-  padding: var(--s-5);
+  padding: var(--s-4);
   display: flex;
   flex-direction: column;
-  gap: var(--s-5);
+  gap: var(--s-3);
   cursor: default;
   /* grid内で縮小可能にする（子要素の最小幅を尊重しない） */
   min-width: 0;
@@ -169,8 +169,8 @@
   display: block;
   width: 100%;
 }
-.waveform-canvas { height: 84px; }
-.waveform-zoom-canvas { height: 72px; }
+.waveform-canvas { height: 64px; }
+.waveform-zoom-canvas { height: 56px; }
 
 /* --- Deck BPM readout (CDJ style) --- */
 .deck-bpm-readout {
@@ -214,8 +214,8 @@
 .fx-pad {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--s-3);
-  padding: var(--s-3);
+  gap: var(--s-2);
+  padding: var(--s-2);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-3);
   background: var(--c-ink-2);
@@ -224,8 +224,8 @@
 .fx-section {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3);
+  gap: 4px;
+  padding: var(--s-2);
   background: var(--c-ink-3);
   border-radius: var(--r-2);
   min-width: 0;
@@ -240,10 +240,13 @@
 
 .fx-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 44px auto;
+  grid-template-columns: 26px minmax(0, 1fr) 40px auto;
   align-items: center;
-  gap: var(--s-2);
+  gap: 6px;
   min-width: 0;
+}
+.fx-row input[type="range"] {
+  height: 4px;
 }
 .fx-row-label {
   font-family: var(--font-mono);
@@ -357,8 +360,8 @@
 .loop-pad {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3);
+  gap: 4px;
+  padding: var(--s-2);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-3);
   background: var(--c-ink-2);
@@ -366,20 +369,20 @@
 .loop-pad-row {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
+  gap: 4px;
 }
 .loop-pad-clear {
   justify-content: flex-end;
 }
 .loop-btn {
   flex: 1;
-  padding: var(--s-2) var(--s-3);
+  padding: 4px var(--s-2);
   background: var(--c-ink-3);
   color: var(--c-ink-11);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-2);
   font-family: var(--font-mono);
-  font-size: var(--fs-small);
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.08em;
   cursor: pointer;
@@ -426,23 +429,24 @@
 /* --- Hot Cue Pad --- */
 .hotcue-pad {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: var(--s-2);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
 }
 .hotcue-pad-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: var(--s-3) 0;
+  gap: 1px;
+  padding: 4px 0;
   background: var(--c-ink-3);
   border: 1px solid var(--c-ink-5);
-  border-radius: var(--r-3);
+  border-radius: var(--r-2);
   color: var(--c-ink-11);
   font-family: var(--font-mono);
   cursor: pointer;
   transition: all 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+  min-width: 0;
 }
 .hotcue-pad-btn:hover {
   border-color: var(--c-accent);
@@ -467,15 +471,17 @@
 .hotcue-pad-btn:nth-child(8)[data-empty="false"] { background: #3E96FF; border-color: #3E96FF; color: #FFF; }
 
 .hotcue-slot-num {
-  font-size: var(--fs-body);
+  font-size: var(--fs-small);
   font-weight: 700;
   letter-spacing: 0.05em;
+  line-height: 1;
 }
 .hotcue-slot-pos {
-  font-size: var(--fs-micro);
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
-  opacity: 0.85;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
+  line-height: 1;
 }
 
 /* --- Performance HUD --- */
@@ -518,11 +524,11 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-3) var(--s-5);
-  padding: var(--s-2) var(--s-5);
+  gap: 6px var(--s-4);
+  padding: 4px var(--s-4);
   border-top: 1px solid var(--c-ink-5);
   background: var(--c-ink-1);
-  font-size: var(--fs-micro);
+  font-size: 9px;
   letter-spacing: 0.05em;
   color: var(--c-ink-9);
   flex-shrink: 0;
@@ -807,10 +813,10 @@ input[type="range"] {
   background: var(--c-ink-2);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-4);
-  padding: var(--s-5);
+  padding: var(--s-3);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--s-5);
+  gap: var(--s-4);
   min-width: 0;
 }
 
@@ -939,9 +945,11 @@ input[type="range"] {
   /* minmax(0, 1fr) で子要素 (Deck) が overflow せず常に 50% に収まるよう保証する */
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-auto-rows: auto;
-  gap: var(--s-5);
-  padding: var(--s-5);
+  gap: var(--s-3);
+  padding: var(--s-3);
   min-width: 0;
+  /* 画面内に収まらない場合のみスクロール許容 */
+  overflow: auto;
 }
 .main-library,
 .main-settings {

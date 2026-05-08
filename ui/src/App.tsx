@@ -534,7 +534,7 @@ function DeckPanel({
           positionRatio={positionRatio}
           hotCueRatios={hotCueRatios}
           loopRangeRatio={loopRangeRatio}
-          height={84}
+          height={64}
           onSeekRatio={(r) => {
             if (snapshot.duration_sec && snapshot.duration_sec > 0) {
               void ipc.seek(deck, r * snapshot.duration_sec);
@@ -551,7 +551,7 @@ function DeckPanel({
           positionSec={livePosSec}
           durationSec={snapshot.duration_sec ?? 0}
           windowSec={zoomWindowSec}
-          height={72}
+          height={56}
           onSeekSec={(sec) => void ipc.seek(deck, sec)}
         />
       </div>
