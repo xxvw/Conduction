@@ -88,6 +88,18 @@ pub struct Deck {
 
     /// シーク後の起点。`position()` が `started_at + offset` を返すために使う。
     position_offset: Duration,
+
+    // --- ループ ---
+    loop_state: LoopState,
+}
+
+/// `Deck` のループ状態。`start` / `end` は `None` 時は未設定。
+/// `active = true` で audio engine 側の tick が再生位置 >= end を検出して start にシークする。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LoopState {
+    pub start_sec: Option<f64>,
+    pub end_sec: Option<f64>,
+    pub active: bool,
 }
 
 impl Deck {
@@ -109,6 +121,7 @@ impl Deck {
             tempo_range: TempoRange::default(),
             tempo_adjust: 0.0,
             position_offset: Duration::ZERO,
+            loop_state: LoopState::default(),
         })
     }
 
@@ -273,6 +286,68 @@ impl Deck {
 
     fn apply_speed(&mut self) {
         self.sink.set_speed(self.playback_speed());
+    }
+
+    // --- ループ ---
+
+    pub fn loop_state(&self) -> LoopState {
+        self.loop_state
+    }
+
+    pub fn set_loop_in(&mut self, sec: f64) {
+        let s = sec.max(0.0);
+        self.loop_state.start_sec = Some(s);
+        // start > end になった場合は end をクリア
+        if let Some(e) = self.loop_state.end_sec {
+            if e <= s {
+                self.loop_state.end_sec = None;
+                self.loop_state.active = false;
+            }
+        }
+    }
+
+    pub fn set_loop_out(&mut self, sec: f64) {
+        let e = sec.max(0.0);
+        // start > end の場合は調整しない（呼び元で正しい順序を渡す前提）
+        self.loop_state.end_sec = Some(e);
+        if self.loop_state.start_sec.is_some_and(|s| s < e) {
+            self.loop_state.active = true;
+        } else {
+            self.loop_state.active = false;
+        }
+    }
+
+    pub fn toggle_loop(&mut self) {
+        if self
+            .loop_state
+            .start_sec
+            .zip(self.loop_state.end_sec)
+            .is_some_and(|(s, e)| s < e)
+        {
+            self.loop_state.active = !self.loop_state.active;
+        }
+    }
+
+    pub fn clear_loop(&mut self) {
+        self.loop_state = LoopState::default();
+    }
+
+    /// audio engine の tick から定期的に呼ばれ、再生位置が end を超えたら start に戻す。
+    pub fn process_loop(&mut self) -> AudioResult<()> {
+        if !self.loop_state.active {
+            return Ok(());
+        }
+        let (Some(start), Some(end)) = (self.loop_state.start_sec, self.loop_state.end_sec) else {
+            return Ok(());
+        };
+        if !(start < end) {
+            return Ok(());
+        }
+        let pos = self.position().as_secs_f64();
+        if pos >= end {
+            self.seek(Duration::from_secs_f64(start))?;
+        }
+        Ok(())
     }
 }
 

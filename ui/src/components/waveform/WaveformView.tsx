@@ -10,6 +10,8 @@ interface WaveformViewProps {
   downbeatRatios?: number[];
   /** Hot Cue を比率 (0..1) で重ねる。 */
   hotCueRatios?: { slot: number; ratio: number }[];
+  /** ループ範囲を比率で重ねる。 */
+  loopRangeRatio?: { startRatio: number; endRatio: number; active: boolean } | null;
   /** クリック時、その x 位置の比率（0..1）が渡される。 */
   onSeekRatio?: (ratio: number) => void;
   height?: number;
@@ -41,6 +43,7 @@ export function WaveformView({
   positionRatio,
   downbeatRatios,
   hotCueRatios,
+  loopRangeRatio,
   onSeekRatio,
   height = 80,
 }: WaveformViewProps) {
@@ -74,6 +77,10 @@ export function WaveformView({
       drawWaveform(ctx, waveform, cssW, height);
     }
 
+    // 波形の上にループ範囲のハイライト（Hot Cue より下、カーソルより下）
+    if (loopRangeRatio) {
+      drawLoopOverview(ctx, loopRangeRatio, cssW, height);
+    }
     if (downbeatRatios && downbeatRatios.length > 0) {
       drawDownbeats(ctx, downbeatRatios, cssW, height);
     }
@@ -82,7 +89,7 @@ export function WaveformView({
     }
 
     drawCursor(ctx, positionRatio, cssW, height);
-  }, [waveform, positionRatio, downbeatRatios, hotCueRatios, height]);
+  }, [waveform, positionRatio, downbeatRatios, hotCueRatios, loopRangeRatio, height]);
 
   return (
     <canvas
@@ -108,6 +115,38 @@ function drawDownbeats(
     ctx.fillRect(x - 1, 0, 2, 5);
     ctx.fillRect(x - 1, height - 5, 2, 5);
   }
+}
+
+/** ループ範囲を violet 色で塗る（active なら濃い、inactive なら薄い）。 */
+function drawLoopOverview(
+  ctx: CanvasRenderingContext2D,
+  range: { startRatio: number; endRatio: number; active: boolean },
+  width: number,
+  height: number,
+) {
+  const a = Math.max(0, Math.min(1, range.startRatio));
+  const b = Math.max(0, Math.min(1, range.endRatio));
+  if (b <= a) return;
+  const xStart = a * width;
+  const w = Math.max(2, (b - a) * width);
+  ctx.fillStyle = range.active
+    ? "rgba(169, 138, 255, 0.22)"
+    : "rgba(169, 138, 255, 0.10)";
+  ctx.fillRect(xStart, 0, w, height);
+
+  ctx.strokeStyle = range.active
+    ? "rgba(169, 138, 255, 0.85)"
+    : "rgba(169, 138, 255, 0.45)";
+  ctx.lineWidth = 1;
+  const xEnd = b * width;
+  ctx.beginPath();
+  ctx.moveTo(Math.round(xStart) + 0.5, 0);
+  ctx.lineTo(Math.round(xStart) + 0.5, height);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(Math.round(xEnd) + 0.5, 0);
+  ctx.lineTo(Math.round(xEnd) + 0.5, height);
+  ctx.stroke();
 }
 
 /** Hot Cue を上端に色付きフラグ + 縦線で表示。 */

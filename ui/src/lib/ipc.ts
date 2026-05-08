@@ -39,6 +39,18 @@ export const ipc = {
   seek(deck: DeckId, positionSec: number) {
     return call<void>("seek_deck", { deck, positionSec });
   },
+  loopIn(deck: DeckId, positionSec: number) {
+    return call<void>("loop_in", { deck, positionSec });
+  },
+  loopOut(deck: DeckId, positionSec: number) {
+    return call<void>("loop_out", { deck, positionSec });
+  },
+  loopToggle(deck: DeckId) {
+    return call<void>("loop_toggle", { deck });
+  },
+  loopClear(deck: DeckId) {
+    return call<void>("loop_clear", { deck });
+  },
   setCrossfader(position: number) {
     return call<void>("set_crossfader", { position });
   },

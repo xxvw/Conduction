@@ -28,6 +28,10 @@ pub enum AudioCommand {
     SetMasterVolume(f32),
     SetTempoAdjust { deck: DeckId, adjust: f32 },
     SetTempoRange { deck: DeckId, range: TempoRange },
+    LoopIn { deck: DeckId, position_sec: f64 },
+    LoopOut { deck: DeckId, position_sec: f64 },
+    LoopToggle(DeckId),
+    LoopClear(DeckId),
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -43,6 +47,9 @@ pub struct DeckSnapshot {
     pub playback_speed: f32,
     pub position_sec: f64,
     pub duration_sec: Option<f64>,
+    pub loop_start_sec: Option<f64>,
+    pub loop_end_sec: Option<f64>,
+    pub loop_active: bool,
 }
 
 /// Mixer 全体のスナップショット。
@@ -107,6 +114,13 @@ pub fn spawn() -> anyhow::Result<AudioHandle> {
                 while let Ok(cmd) = rx.try_recv() {
                     apply_command(&device, &mut mixer, &mut deck_paths, cmd);
                 }
+                // 各デッキのループ判定。end 到達なら start にシークする。
+                if let Err(e) = mixer.deck_a().process_loop() {
+                    error!(?e, "loop process failed (deck A)");
+                }
+                if let Err(e) = mixer.deck_b().process_loop() {
+                    error!(?e, "loop process failed (deck B)");
+                }
                 let snap = build_snapshot(&mut mixer, &deck_paths);
                 snapshot_worker.store(Arc::new(snap));
 
@@ -160,6 +174,18 @@ fn apply_command(
         AudioCommand::SetTempoRange { deck, range } => {
             mixer.deck(deck).set_tempo_range(range);
         }
+        AudioCommand::LoopIn { deck, position_sec } => {
+            mixer.deck(deck).set_loop_in(position_sec);
+        }
+        AudioCommand::LoopOut { deck, position_sec } => {
+            mixer.deck(deck).set_loop_out(position_sec);
+        }
+        AudioCommand::LoopToggle(deck) => {
+            mixer.deck(deck).toggle_loop();
+        }
+        AudioCommand::LoopClear(deck) => {
+            mixer.deck(deck).clear_loop();
+        }
     }
 }
 
@@ -186,6 +212,7 @@ fn build_deck_snapshot(
 ) -> DeckSnapshot {
     let state = deck_state(mixer, id);
     let deck = mixer.deck(id);
+    let loop_state = deck.loop_state();
     DeckSnapshot {
         id: deck_label(id),
         state,
@@ -197,6 +224,9 @@ fn build_deck_snapshot(
         playback_speed: deck.playback_speed(),
         position_sec: deck.position().as_secs_f64(),
         duration_sec: deck.duration().map(|d| d.as_secs_f64()),
+        loop_start_sec: loop_state.start_sec,
+        loop_end_sec: loop_state.end_sec,
+        loop_active: loop_state.active,
     }
 }
 
@@ -241,6 +271,9 @@ fn empty_deck_snapshot(id: &'static str) -> DeckSnapshot {
         playback_speed: 1.0,
         position_sec: 0.0,
         duration_sec: None,
+        loop_start_sec: None,
+        loop_end_sec: None,
+        loop_active: false,
     }
 }
 

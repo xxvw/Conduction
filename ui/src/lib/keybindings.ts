@@ -19,7 +19,12 @@ export type ShortcutAction =
   | "hotcue-5"
   | "hotcue-6"
   | "hotcue-7"
-  | "hotcue-8";
+  | "hotcue-8"
+  | "loop-in"
+  | "loop-out"
+  | "loop-toggle"
+  | "loop-extend"
+  | "loop-shrink";
 
 export interface ShortcutBinding {
   key: string;
@@ -41,6 +46,11 @@ export const DEFAULT_BINDINGS: ShortcutBinding[] = [
   { key: "q",          action: "focus-deck-a", label: "focus Deck A" },
   { key: "w",          action: "focus-deck-b", label: "focus Deck B" },
   { key: " ",          action: "play-pause",   label: "play / pause" },
+  { key: "[",          action: "loop-in",     label: "Loop In"      },
+  { key: "]",          action: "loop-out",    label: "Loop Out"     },
+  { key: "\\",         action: "loop-toggle", label: "Loop on/off"  },
+  { key: ".",          action: "loop-extend", label: "Loop +1 bar"  },
+  { key: ",",          action: "loop-shrink", label: "Loop −1 bar"  },
   { key: "1",          action: "hotcue-1",    label: "Hot Cue 1"     },
   { key: "2",          action: "hotcue-2",    label: "Hot Cue 2"     },
   { key: "3",          action: "hotcue-3",    label: "Hot Cue 3"     },

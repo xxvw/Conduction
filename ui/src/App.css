@@ -207,6 +207,26 @@
 .tempo-pct { color: var(--c-ink-11); }
 .tempo-bpm { color: var(--c-ink-9); }
 
+/* --- Loop badge --- */
+.loop-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 2px var(--s-3);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  font-family: var(--font-mono);
+  border-radius: var(--r-2);
+  background: rgba(169, 138, 255, 0.10);
+  border: 1px solid rgba(169, 138, 255, 0.45);
+  color: var(--c-loop, #A98AFF);
+}
+.loop-badge[data-active="true"] {
+  background: rgba(169, 138, 255, 0.25);
+  border-color: rgba(169, 138, 255, 0.85);
+  color: #FFFFFF;
+}
+
 /* --- Hot Cue Pad --- */
 .hotcue-pad {
   display: grid;

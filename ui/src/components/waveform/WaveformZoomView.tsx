@@ -17,6 +17,8 @@ interface WaveformZoomViewProps {
   height?: number;
   /** クリックした時、その秒位置にシークするためのコールバック。 */
   onSeekSec?: (sec: number) => void;
+  /** ループ範囲（秒）。 */
+  loopRange?: { startSec: number; endSec: number; active: boolean } | null;
 }
 
 /**
@@ -38,6 +40,7 @@ export function WaveformZoomView({
   windowSec = 4,
   height = 72,
   onSeekSec,
+  loopRange,
 }: WaveformZoomViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -89,12 +92,15 @@ export function WaveformZoomView({
       );
     }
 
+    if (loopRange && loopRange.endSec > loopRange.startSec) {
+      drawLoopRange(ctx, loopRange, xOf, cssW, height, markerTop, markerBottom);
+    }
     drawBeatRibbons(ctx, beats, startSec, endSec, xOf, cssW, height, markerTop, markerBottom);
     if (hotCues && hotCues.length > 0) {
       drawHotCues(ctx, hotCues, startSec, endSec, xOf, height, markerTop, markerBottom);
     }
     drawCenterCursor(ctx, cssW, height);
-  }, [waveform, beats, hotCues, positionSec, durationSec, windowSec, height]);
+  }, [waveform, beats, hotCues, loopRange, positionSec, durationSec, windowSec, height]);
 
   return (
     <canvas
@@ -268,6 +274,55 @@ function drawBeatRibbons(
       ctx.fillRect(x - w / 2, 0, w, topH);
       ctx.fillRect(x - w / 2, innerBottom, w, bottomH);
     }
+  }
+}
+
+/** ループ範囲を violet で塗りつぶし、IN/OUT 端に明るい縦線。 */
+function drawLoopRange(
+  ctx: CanvasRenderingContext2D,
+  range: { startSec: number; endSec: number; active: boolean },
+  xOf: (sec: number) => number,
+  width: number,
+  height: number,
+  topH: number,
+  bottomH: number,
+) {
+  const xa = xOf(range.startSec);
+  const xb = xOf(range.endSec);
+  if (xb <= xa) return;
+  const drawTop = topH;
+  const drawBottom = height - bottomH;
+  const drawH = drawBottom - drawTop;
+
+  const visibleStart = Math.max(0, xa);
+  const visibleEnd = Math.min(width, xb);
+  if (visibleEnd <= visibleStart) return;
+
+  ctx.fillStyle = range.active
+    ? "rgba(169, 138, 255, 0.22)"
+    : "rgba(169, 138, 255, 0.10)";
+  ctx.fillRect(visibleStart, drawTop, visibleEnd - visibleStart, drawH);
+
+  // IN / OUT 端の縦線（範囲内に来た時だけ）
+  if (xa >= 0 && xa <= width) {
+    ctx.strokeStyle = range.active
+      ? "rgba(169, 138, 255, 1.0)"
+      : "rgba(169, 138, 255, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(xa) + 0.5, drawTop);
+    ctx.lineTo(Math.round(xa) + 0.5, drawBottom);
+    ctx.stroke();
+  }
+  if (xb >= 0 && xb <= width) {
+    ctx.strokeStyle = range.active
+      ? "rgba(169, 138, 255, 1.0)"
+      : "rgba(169, 138, 255, 0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.round(xb) + 0.5, drawTop);
+    ctx.lineTo(Math.round(xb) + 0.5, drawBottom);
+    ctx.stroke();
   }
 }
 

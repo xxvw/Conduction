@@ -15,6 +15,9 @@ export interface DeckSnapshot {
   playback_speed: number;
   position_sec: number;
   duration_sec: number | null;
+  loop_start_sec: number | null;
+  loop_end_sec: number | null;
+  loop_active: boolean;
 }
 
 export interface MixerSnapshot {

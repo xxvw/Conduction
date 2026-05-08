@@ -102,6 +102,35 @@ export function App() {
         return;
       }
 
+      // ループ
+      if (action === "loop-in") {
+        void ipc.loopIn(activeDeck, snap.position_sec);
+        return;
+      }
+      if (action === "loop-out") {
+        void ipc.loopOut(activeDeck, snap.position_sec);
+        return;
+      }
+      if (action === "loop-toggle") {
+        void ipc.loopToggle(activeDeck);
+        return;
+      }
+      if (action === "loop-extend" || action === "loop-shrink") {
+        if (snap.loop_start_sec == null || snap.loop_end_sec == null) return;
+        const summaryForLoop = trackByPath.get(snap.loaded_path);
+        const bpmForLoop = summaryForLoop?.bpm ?? 0;
+        if (bpmForLoop <= 0) return; // BPM未推定時は伸縮できない
+        // 1 小節 = 4 拍。再生速度の影響は受けない (拍は楽曲基準)。
+        const barSec = (60 / bpmForLoop) * 4;
+        const sign = action === "loop-extend" ? +1 : -1;
+        const newEnd = snap.loop_end_sec + sign * barSec;
+        // 最小幅: start から 1/4 拍以上は確保
+        const minEnd = snap.loop_start_sec + (60 / bpmForLoop) * 0.25;
+        const clampedEnd = Math.max(minEnd, newEnd);
+        void ipc.loopOut(activeDeck, clampedEnd);
+        return;
+      }
+
       // Hot Cue: 1..8
       if (action.startsWith("hotcue-")) {
         const slot = Number(action.slice("hotcue-".length));
@@ -349,6 +378,25 @@ function DeckPanel({
       .map((c) => ({ slot: c.slot, ratio: c.position_sec / snapshot.duration_sec! }));
   }, [hotCues.cues, snapshot.duration_sec]);
 
+  // ループ範囲（overview / zoom 共通）
+  const loopRangeSec = useMemo(() => {
+    if (snapshot.loop_start_sec == null || snapshot.loop_end_sec == null) return null;
+    return {
+      startSec: snapshot.loop_start_sec,
+      endSec: snapshot.loop_end_sec,
+      active: snapshot.loop_active,
+    };
+  }, [snapshot.loop_start_sec, snapshot.loop_end_sec, snapshot.loop_active]);
+
+  const loopRangeRatio = useMemo(() => {
+    if (!loopRangeSec || !snapshot.duration_sec || snapshot.duration_sec <= 0) return null;
+    return {
+      startRatio: loopRangeSec.startSec / snapshot.duration_sec,
+      endRatio: loopRangeSec.endSec / snapshot.duration_sec,
+      active: loopRangeSec.active,
+    };
+  }, [loopRangeSec, snapshot.duration_sec]);
+
   const handleLoad = useCallback(async () => {
     const path = await open({
       multiple: false,
@@ -402,6 +450,24 @@ function DeckPanel({
                 )}
               </span>
             )}
+            {loopRangeSec && (
+              <span
+                className="loop-badge"
+                data-active={loopRangeSec.active || undefined}
+                title="loop range"
+              >
+                LOOP
+                {baseBpm > 0 && (
+                  <>
+                    {" "}
+                    {Math.round(
+                      ((loopRangeSec.endSec - loopRangeSec.startSec) * baseBpm) / 60 / 4
+                    ) || ""}
+                    bar
+                  </>
+                )}
+              </span>
+            )}
             {loadedTrack && !waveform && (
               <span
                 className="analyzing-bar"
@@ -432,6 +498,7 @@ function DeckPanel({
           waveform={waveform}
           positionRatio={positionRatio}
           hotCueRatios={hotCueRatios}
+          loopRangeRatio={loopRangeRatio}
           height={84}
           onSeekRatio={(r) => {
             if (snapshot.duration_sec && snapshot.duration_sec > 0) {
@@ -445,6 +512,7 @@ function DeckPanel({
           waveform={waveform}
           beats={beats}
           hotCues={hotCues.cues}
+          loopRange={loopRangeSec}
           positionSec={livePosSec}
           durationSec={snapshot.duration_sec ?? 0}
           windowSec={zoomWindowSec}

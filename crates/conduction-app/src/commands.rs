@@ -77,6 +77,30 @@ pub fn seek_deck(
 }
 
 #[tauri::command]
+pub fn loop_in(audio: State<'_, AudioHandle>, deck: String, position_sec: f64) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::LoopIn { deck: id, position_sec })
+}
+
+#[tauri::command]
+pub fn loop_out(audio: State<'_, AudioHandle>, deck: String, position_sec: f64) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::LoopOut { deck: id, position_sec })
+}
+
+#[tauri::command]
+pub fn loop_toggle(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::LoopToggle(id))
+}
+
+#[tauri::command]
+pub fn loop_clear(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::LoopClear(id))
+}
+
+#[tauri::command]
 pub fn set_crossfader(audio: State<'_, AudioHandle>, position: f32) -> CmdResult {
     send(&audio, AudioCommand::SetCrossfader(position))
 }
