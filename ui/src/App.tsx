@@ -8,22 +8,23 @@ import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
 import { useBeats } from "@/hooks/useBeats";
 import { useInterpolatedPosition } from "@/hooks/useInterpolatedPosition";
+import { useKeyBindings } from "@/hooks/useKeyBindings";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
 import { useWaveform } from "@/hooks/useWaveform";
 import { ipc } from "@/lib/ipc";
 import {
-  DEFAULT_BINDINGS,
   DEFAULT_ZOOM_SEC,
   ZOOM_LEVELS_SEC,
   type ShortcutAction,
 } from "@/lib/keybindings";
 import { LibraryScreen } from "@/screens/LibraryScreen";
+import { SettingsScreen } from "@/screens/SettingsScreen";
 import type { DeckId, DeckSnapshot, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 
-type Screen = "mix" | "library";
+type Screen = "mix" | "library" | "settings";
 
 const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 
@@ -33,6 +34,7 @@ export function App() {
   const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
   const status = useMixerStatus(100);
   const tracksHandle = useTracks();
+  const keyBindings = useKeyBindings();
 
   const trackByPath = useMemo(() => {
     const m = new Map<string, TrackSummary>();
@@ -149,7 +151,7 @@ export function App() {
     [status, activeDeck, trackByPath, beatsA, beatsB],
   );
 
-  useShortcuts({ onAction: handleShortcut });
+  useShortcuts({ bindings: keyBindings.bindings, onAction: handleShortcut });
 
   return (
     <div className="app">
@@ -170,14 +172,21 @@ export function App() {
           >
             Library
           </button>
+          <button
+            className="nav-btn"
+            data-active={screen === "settings"}
+            onClick={() => setScreen("settings")}
+          >
+            Settings
+          </button>
         </nav>
         <div className="spacer" />
         <PerfHud />
         <MasterSlim volume={status?.master_volume ?? 1.0} />
       </header>
 
-      <main className={screen === "mix" ? "main main-mix" : "main main-library"}>
-        {screen === "mix" ? (
+      <main className={`main main-${screen}`}>
+        {screen === "mix" && (
           <MixScreen
             status={status}
             trackByPath={trackByPath}
@@ -187,7 +196,8 @@ export function App() {
             beatsA={beatsA}
             beatsB={beatsB}
           />
-        ) : (
+        )}
+        {screen === "library" && (
           <LibraryScreen
             tracks={tracksHandle.tracks}
             loading={tracksHandle.loading}
@@ -196,11 +206,18 @@ export function App() {
             onLoadToDeck={handleLoadToDeck}
           />
         )}
+        {screen === "settings" && (
+          <SettingsScreen
+            bindings={keyBindings.bindings}
+            setBinding={keyBindings.setBinding}
+            reset={keyBindings.reset}
+          />
+        )}
       </main>
 
       {screen === "mix" && (
         <KeyConfigBar
-          bindings={DEFAULT_BINDINGS}
+          bindings={keyBindings.bindings}
           activeDeck={activeDeck}
           zoomWindowSec={zoomWindowSec}
         />

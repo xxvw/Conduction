@@ -313,6 +313,102 @@
   color: var(--c-ink-7);
   font-style: italic;
 }
+
+/* --- Settings screen --- */
+.settings-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-7);
+  max-width: 720px;
+  width: 100%;
+}
+.settings-header h2 {
+  margin: 0 0 var(--s-2) 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  letter-spacing: 0.01em;
+}
+.settings-subtitle {
+  margin: 0;
+  color: var(--c-ink-9);
+  font-size: var(--fs-small);
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  background: var(--c-ink-2);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-4);
+}
+.settings-section h3 {
+  margin: 0;
+  font-size: var(--fs-h4);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.settings-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.settings-reset {
+  font-size: var(--fs-small);
+}
+
+.keybindings-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--c-ink-5);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.keybinding-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  background: var(--c-ink-3);
+}
+.keybinding-row[data-duplicate] {
+  background: color-mix(in srgb, var(--c-warning) 12%, var(--c-ink-3));
+}
+.keybinding-action {
+  font-size: var(--fs-small);
+  color: var(--c-ink-11);
+}
+.keybinding-button {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  min-width: 96px;
+  padding: var(--s-2) var(--s-4);
+  background: var(--c-ink-2);
+  color: var(--c-ink-11);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition: all 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.keybinding-button:hover {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+.keybinding-button[data-capturing] {
+  background: var(--c-accent);
+  color: var(--c-ink-0);
+  border-color: var(--c-accent);
+}
+.keybinding-warn {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--c-warning);
+  font-family: var(--font-mono);
+}
 .deck-status-row {
   display: flex;
   align-items: center;
@@ -493,12 +589,13 @@ input[type="range"] {
   gap: var(--s-5);
   padding: var(--s-5);
 }
-.main-library {
+.main-library,
+.main-settings {
   display: flex;
   flex-direction: column;
   padding: var(--s-5);
   gap: var(--s-4);
-  overflow: hidden;
+  overflow: auto;
 }
 
 /* --- Library --- */
