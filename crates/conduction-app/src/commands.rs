@@ -513,3 +513,28 @@ pub fn delete_track(library: State<'_, LibraryHandle>, id: String) -> Result<(),
             .map_err(|e| e.to_string())
     })
 }
+
+// ======== YouTube ========
+
+#[tauri::command]
+pub fn yt_dlp_available() -> bool {
+    crate::youtube::is_available()
+}
+
+#[tauri::command]
+pub fn yt_search(
+    query: String,
+    limit: u32,
+) -> Result<Vec<conduction_download::VideoSearchResult>, String> {
+    crate::youtube::search(&query, limit as usize)
+}
+
+#[tauri::command]
+pub fn yt_download(
+    library: State<'_, LibraryHandle>,
+    url: String,
+    format: String,
+) -> Result<TrackSummary, String> {
+    let format = crate::youtube::parse_format(&format)?;
+    crate::youtube::download_and_import(&library, &url, format)
+}

@@ -56,6 +56,8 @@ use crate::commands::{BeatDto, HotCueDto};
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
+use crate::youtube;
+use conduction_download::{AudioFormat, VideoSearchResult};
 
 pub const DEFAULT_HTTP_PORT: u16 = 38127;
 
@@ -139,6 +141,9 @@ fn build_router(state: AppState) -> Router {
         .route("/api/decks/:id/tempo-range", post(set_tempo_range))
         .route("/api/mixer/crossfader", post(set_crossfader))
         .route("/api/mixer/master-volume", post(set_master_volume))
+        .route("/api/youtube/available", get(yt_available))
+        .route("/api/youtube/search", get(yt_search))
+        .route("/api/youtube/download", post(yt_download))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -698,6 +703,75 @@ async fn set_master_volume(
     Ok(StatusCode::OK)
 }
 
+// ---- YouTube ------------------------------------------------------------
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct YtAvailableResponse {
+    pub available: bool,
+}
+
+#[utoipa::path(get, path = "/api/youtube/available", responses((status = 200, body = YtAvailableResponse)))]
+async fn yt_available() -> Json<YtAvailableResponse> {
+    Json(YtAvailableResponse {
+        available: youtube::is_available(),
+    })
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct YtSearchQuery {
+    pub q: String,
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+fn default_limit() -> u32 {
+    10
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/youtube/search",
+    params(YtSearchQuery),
+    responses((status = 200, body = Vec<VideoSearchResult>))
+)]
+async fn yt_search(
+    axum::extract::Query(q): axum::extract::Query<YtSearchQuery>,
+) -> ApiResult<Json<Vec<VideoSearchResult>>> {
+    let results =
+        youtube::search(&q.q, q.limit as usize).map_err(ApiError::internal)?;
+    Ok(Json(results))
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct YtDownloadRequest {
+    pub url: String,
+    /// "m4a" | "mp3" | "opus" | "wav" | "flac"
+    pub format: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/youtube/download",
+    request_body = YtDownloadRequest,
+    responses((status = 200, body = TrackSummary))
+)]
+async fn yt_download(
+    State(s): State<AppState>,
+    Json(body): Json<YtDownloadRequest>,
+) -> ApiResult<Json<TrackSummary>> {
+    let format = youtube::parse_format(&body.format).map_err(ApiError::bad_request)?;
+    let library = s.library.clone();
+    let url = body.url.clone();
+    // 同期 spawn (yt-dlp が blocking) を tokio から逃がす。
+    let track = tokio::task::spawn_blocking(move || {
+        youtube::download_and_import(&library, &url, format)
+    })
+    .await
+    .map_err(|e| ApiError::internal(e.to_string()))?
+    .map_err(ApiError::internal)?;
+    Ok(Json(track))
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -772,6 +846,9 @@ pub struct HealthResponse {
         set_tempo_range,
         set_crossfader,
         set_master_volume,
+        yt_available,
+        yt_search,
+        yt_download,
     ),
     components(schemas(
         HealthResponse,
@@ -796,6 +873,10 @@ pub struct HealthResponse {
         TempoAdjustRequest,
         TempoRangeRequest,
         CrossfaderRequest,
+        VideoSearchResult,
+        AudioFormat,
+        YtAvailableResponse,
+        YtDownloadRequest,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
@@ -803,6 +884,7 @@ pub struct HealthResponse {
         (name = "mixer", description = "Crossfader and master volume"),
         (name = "library", description = "Track import / waveform / hot cues"),
         (name = "system", description = "Audio devices / resources / settings"),
+        (name = "youtube", description = "yt-dlp search and download"),
     )
 )]
 struct ApiDoc;

@@ -131,7 +131,30 @@ export const ipc = {
   deleteHotCue(trackId: string, slot: number) {
     return call<void>("delete_hot_cue", { trackId, slot });
   },
+
+  // --- YouTube (yt-dlp) ---
+  ytDlpAvailable() {
+    return call<boolean>("yt_dlp_available");
+  },
+  ytSearch(query: string, limit: number) {
+    return call<VideoSearchResult[]>("yt_search", { query, limit });
+  },
+  ytDownload(url: string, format: AudioFormat) {
+    return call<TrackSummary>("yt_download", { url, format });
+  },
 };
+
+export type AudioFormat = "m4a" | "mp3" | "opus" | "wav" | "flac";
+
+export interface VideoSearchResult {
+  id: string;
+  title: string;
+  url: string;
+  channel: string;
+  duration_sec: number | null;
+  thumbnail: string | null;
+  view_count: number | null;
+}
 
 export interface ResourceStats {
   cpu_percent: number;

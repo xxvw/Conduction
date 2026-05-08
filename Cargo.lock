@@ -605,8 +605,11 @@ name = "conduction-download"
 version = "0.1.0"
 dependencies = [
  "conduction-core",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]

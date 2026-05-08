@@ -10,6 +10,7 @@ pub mod http_api;
 pub mod library_state;
 pub mod settings;
 pub mod system_stats;
+pub mod youtube;
 
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -78,6 +79,9 @@ pub fn run() {
             commands::list_hot_cues,
             commands::set_hot_cue,
             commands::delete_hot_cue,
+            commands::yt_dlp_available,
+            commands::yt_search,
+            commands::yt_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -16,3 +16,6 @@ yt-download = []
 conduction-core.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+utoipa = "5"
