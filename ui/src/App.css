@@ -55,6 +55,9 @@
   flex-direction: column;
   gap: var(--s-5);
   cursor: default;
+  /* grid内で縮小可能にする（子要素の最小幅を尊重しない） */
+  min-width: 0;
+  overflow: hidden;
   transition: border-color 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)),
     box-shadow 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
 }
@@ -210,22 +213,22 @@
 /* --- FX Pad (EQ / Filter / Echo / Reverb) --- */
 .fx-pad {
   display: grid;
-  grid-template-columns: auto 1fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--s-3);
   padding: var(--s-3);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-3);
   background: var(--c-ink-2);
+  min-width: 0;
 }
 .fx-section {
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
-  padding: var(--s-2);
-  border-right: 1px solid var(--c-ink-5);
-}
-.fx-section:last-child {
-  border-right: none;
+  padding: var(--s-3);
+  background: var(--c-ink-3);
+  border-radius: var(--r-2);
+  min-width: 0;
 }
 .fx-section-title {
   font-family: var(--font-mono);
@@ -234,50 +237,43 @@
   color: var(--c-ink-9);
   text-transform: uppercase;
 }
-.fx-pad .fx-section:nth-child(1) {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  grid-auto-flow: column;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--s-2);
-}
-.fx-pad .fx-section:nth-child(1) .fx-section-title {
-  grid-column: 1 / -1;
-}
 
-.eq-column {
-  display: flex;
-  flex-direction: column;
+.fx-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 44px auto;
   align-items: center;
   gap: var(--s-2);
+  min-width: 0;
 }
-.eq-band-label {
+.fx-row-label {
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.18em;
+  letter-spacing: 0.1em;
   color: var(--c-ink-9);
+  text-transform: uppercase;
 }
-.eq-slider {
-  appearance: slider-vertical;
-  -webkit-appearance: slider-vertical;
-  width: 16px;
-  height: 80px;
+.fx-row input[type="range"] {
+  width: 100%;
+  min-width: 0;
   accent-color: var(--c-accent);
 }
-.eq-value {
+.fx-row-value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-micro);
   color: var(--c-ink-11);
-  min-width: 38px;
-  text-align: center;
+  text-align: right;
+  white-space: nowrap;
 }
+
 .eq-kill {
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  padding: 2px var(--s-3);
-  background: var(--c-ink-3);
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--c-ink-2);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-2);
   color: var(--c-ink-9);
@@ -295,18 +291,21 @@
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  min-width: 0;
 }
 .fx-knob-row input[type="range"] {
   flex: 1;
+  min-width: 0;
   accent-color: var(--c-accent);
 }
 .fx-mini-btn {
   font-family: var(--font-mono);
-  background: var(--c-ink-3);
+  background: var(--c-ink-2);
   border: 1px solid var(--c-ink-5);
   color: var(--c-ink-9);
   width: 22px;
   height: 22px;
+  flex-shrink: 0;
   border-radius: var(--r-2);
   cursor: pointer;
 }
@@ -324,30 +323,6 @@
 .fx-readout-value {
   color: var(--c-ink-11);
   font-variant-numeric: tabular-nums;
-}
-
-.fx-row {
-  display: grid;
-  grid-template-columns: 32px 1fr 56px;
-  align-items: center;
-  gap: var(--s-2);
-}
-.fx-row-label {
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  color: var(--c-ink-9);
-  text-transform: uppercase;
-}
-.fx-row input[type="range"] {
-  accent-color: var(--c-accent);
-}
-.fx-row-value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-micro);
-  color: var(--c-ink-11);
-  text-align: right;
 }
 
 /* --- Loop badge --- */
@@ -783,8 +758,9 @@ input[type="range"] {
   border-radius: var(--r-4);
   padding: var(--s-5);
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--s-5);
+  min-width: 0;
 }
 
 .tempo-ranges {
@@ -880,10 +856,12 @@ input[type="range"] {
 
 .main-mix {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) で子要素 (Deck) が overflow せず常に 50% に収まるよう保証する */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-auto-rows: auto;
   gap: var(--s-5);
   padding: var(--s-5);
+  min-width: 0;
 }
 .main-library,
 .main-settings {

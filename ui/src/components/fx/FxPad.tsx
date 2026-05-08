@@ -21,21 +21,21 @@ export function FxPad({ deckId, snapshot }: FxPadProps) {
     <div className="fx-pad" data-deck={deckId} aria-label={`Effects for Deck ${deckId}`}>
       <div className="fx-section">
         <div className="fx-section-title">EQ</div>
-        <EqColumn
+        <EqRow
           label="HI"
           value={snapshot.eq_high_db}
           onChange={(v) => handleEq("high", v)}
           isKill={isKill(snapshot.eq_high_db)}
           onKill={() => handleEq("high", isKill(snapshot.eq_high_db) ? 0 : KILL_DB)}
         />
-        <EqColumn
+        <EqRow
           label="MID"
           value={snapshot.eq_mid_db}
           onChange={(v) => handleEq("mid", v)}
           isKill={isKill(snapshot.eq_mid_db)}
           onKill={() => handleEq("mid", isKill(snapshot.eq_mid_db) ? 0 : KILL_DB)}
         />
-        <EqColumn
+        <EqRow
           label="LOW"
           value={snapshot.eq_low_db}
           onChange={(v) => handleEq("low", v)}
@@ -132,7 +132,7 @@ export function FxPad({ deckId, snapshot }: FxPadProps) {
   );
 }
 
-function EqColumn({
+function EqRow({
   label,
   value,
   onChange,
@@ -146,28 +146,24 @@ function EqColumn({
   onKill: () => void;
 }) {
   return (
-    <div className="eq-column">
-      <span className="eq-band-label">{label}</span>
+    <div className="fx-row eq-row">
+      <span className="fx-row-label">{label}</span>
       <input
         type="range"
-        className="eq-slider"
         min={MIN_DB}
         max={MAX_DB}
         step={0.5}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        orient="vertical"
-        // @ts-expect-error: orient is non-standard but accepted by Firefox/Safari for vertical sliders
-        style={{ writingMode: "vertical-lr", direction: "rtl" }}
       />
-      <span className="eq-value">{formatDb(value)}</span>
+      <span className="fx-row-value">{formatDb(value)}</span>
       <button
         className="eq-kill"
         data-active={isKill || undefined}
-        title="Kill (Ctrl+click resets)"
+        title="Kill (silence this band)"
         onClick={onKill}
       >
-        Kill
+        K
       </button>
     </div>
   );
