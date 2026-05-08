@@ -167,7 +167,7 @@
   width: 100%;
 }
 .waveform-canvas { height: 84px; }
-.waveform-zoom-canvas { height: 56px; }
+.waveform-zoom-canvas { height: 72px; }
 
 /* --- Deck BPM readout (CDJ style) --- */
 .deck-bpm-readout {

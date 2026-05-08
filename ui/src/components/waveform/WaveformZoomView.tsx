@@ -18,11 +18,14 @@ interface WaveformZoomViewProps {
 }
 
 /**
- * rekordbox の下段に相当する詳細波形。再生位置を中央に固定し、
- * ±windowSec の範囲を拡大して表示。ビートライン（縦線）を重ねる。
+ * rekordbox 下段相当の詳細波形。
  *
- * 詳細用の高密度波形データはまだ持っていないため、overview の bin を
- * 時間スケールでマッピングして拡大表示する。
+ * 構造:
+ *   ┌─ marker zone (top, 8px) ─────┐  ← 拍マーカーのリボン
+ *   │                              │
+ *   │  multi-band stacked waveform │  ← low(赤)/mid(緑)/high(青)を中心線から外側へ積む
+ *   │                              │
+ *   └─ marker zone (bottom, 8px) ──┘
  */
 export function WaveformZoomView({
   waveform,
@@ -30,7 +33,7 @@ export function WaveformZoomView({
   positionSec,
   durationSec,
   windowSec = 4,
-  height = 64,
+  height = 72,
   onSeekSec,
 }: WaveformZoomViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -64,11 +67,26 @@ export function WaveformZoomView({
     const span = windowSec * 2;
     const xOf = (sec: number) => ((sec - startSec) / span) * cssW;
 
-    drawZoomBackground(ctx, cssW, height);
+    const markerTop = 8;
+    const markerBottom = 8;
+
+    drawMarkerZones(ctx, cssW, height, markerTop, markerBottom);
+
     if (waveform && waveform.sample_count > 0 && durationSec > 0) {
-      drawZoomWaveform(ctx, waveform, durationSec, startSec, span, cssW, height);
+      drawStackedWaveform(
+        ctx,
+        waveform,
+        durationSec,
+        startSec,
+        span,
+        cssW,
+        height,
+        markerTop,
+        markerBottom,
+      );
     }
-    drawBeatLines(ctx, beats, startSec, endSec, xOf, height);
+
+    drawBeatRibbons(ctx, beats, startSec, endSec, xOf, cssW, height, markerTop, markerBottom);
     drawCenterCursor(ctx, cssW, height);
   }, [waveform, beats, positionSec, durationSec, windowSec, height]);
 
@@ -82,21 +100,21 @@ export function WaveformZoomView({
   );
 }
 
-function drawZoomBackground(
+/** marker zone (上下) に薄いベース色を引く。マーカーの背景。 */
+function drawMarkerZones(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
+  topH: number,
+  bottomH: number,
 ) {
-  // ベースライン
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, height / 2);
-  ctx.lineTo(width, height / 2);
-  ctx.stroke();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+  ctx.fillRect(0, 0, width, topH);
+  ctx.fillRect(0, height - bottomH, width, bottomH);
 }
 
-function drawZoomWaveform(
+/** 中心線から low → mid → high の順に外側へ積み重ねる多色波形。 */
+function drawStackedWaveform(
   ctx: CanvasRenderingContext2D,
   wf: WaveformPreview,
   durationSec: number,
@@ -104,12 +122,23 @@ function drawZoomWaveform(
   span: number,
   width: number,
   height: number,
+  markerTop: number,
+  markerBottom: number,
 ) {
   const total = wf.sample_count;
   const secPerBin = durationSec / total;
-  const halfH = height / 2;
 
-  const COLOR_LOW = "rgba(232, 184, 104, 0.95)";
+  const innerTop = markerTop;
+  const innerBottom = height - markerBottom;
+  const innerH = innerBottom - innerTop;
+  const halfH = innerH / 2;
+  const centerY = innerTop + halfH;
+
+  // 周波数帯ごとの色:
+  //   low  → red    (#E84A5C)
+  //   mid  → mint   (#4FE3B2)
+  //   high → blue   (#3EA8FF)
+  const COLOR_LOW = "rgba(232, 74, 92, 0.95)";
   const COLOR_MID = "rgba(79, 227, 178, 0.95)";
   const COLOR_HIGH = "rgba(62, 168, 255, 0.95)";
 
@@ -129,64 +158,109 @@ function drawZoomWaveform(
     const xEnd = ((tEnd - startSec) / span) * width;
     const w = Math.max(xEnd - xStart, 1);
 
-    let color: string;
-    if (lo >= mi && lo >= hi) color = COLOR_LOW;
-    else if (hi >= mi) color = COLOR_HIGH;
-    else color = COLOR_MID;
+    // 各バンドの高さ。peakで割らずそのまま [0,1] を halfH にスケール。
+    const lowH = lo * halfH;
+    const midH = mi * halfH;
+    const highH = hi * halfH;
 
-    const barH = peak * halfH;
-    ctx.fillStyle = color;
-    ctx.fillRect(xStart, halfH - barH, w, barH * 2);
+    // 中心 → 上方向: low → mid → high の順で積む（低音は中央寄り、高音は外側）
+    let yTop = centerY;
+    if (lowH > 0) {
+      ctx.fillStyle = COLOR_LOW;
+      ctx.fillRect(xStart, yTop - lowH, w, lowH);
+      yTop -= lowH;
+    }
+    if (midH > 0) {
+      ctx.fillStyle = COLOR_MID;
+      ctx.fillRect(xStart, yTop - midH, w, midH);
+      yTop -= midH;
+    }
+    if (highH > 0) {
+      ctx.fillStyle = COLOR_HIGH;
+      ctx.fillRect(xStart, yTop - highH, w, highH);
+    }
+
+    // 中心 → 下方向: 対称
+    let yBottom = centerY;
+    if (lowH > 0) {
+      ctx.fillStyle = COLOR_LOW;
+      ctx.fillRect(xStart, yBottom, w, lowH);
+      yBottom += lowH;
+    }
+    if (midH > 0) {
+      ctx.fillStyle = COLOR_MID;
+      ctx.fillRect(xStart, yBottom, w, midH);
+      yBottom += midH;
+    }
+    if (highH > 0) {
+      ctx.fillStyle = COLOR_HIGH;
+      ctx.fillRect(xStart, yBottom, w, highH);
+    }
   }
 }
 
-function drawBeatLines(
+/** 拍マーカー: rekordbox 風の上下リボン帯。ダウンビート赤、通常拍白。 */
+function drawBeatRibbons(
   ctx: CanvasRenderingContext2D,
   beats: BeatDto[],
   startSec: number,
   endSec: number,
   xOf: (sec: number) => number,
+  width: number,
   height: number,
+  topH: number,
+  bottomH: number,
 ) {
-  // 上下端に矩形マーカー：通常拍は白、ダウンビート（毎4拍）は赤。
-  // 縦線は控えめに（カーソルや波形を邪魔しない程度）。
-  const COLOR_DOWN = "rgba(255, 45, 85, 0.95)"; // --c-live
-  const COLOR_BEAT = "rgba(255, 255, 255, 0.85)";
+  const COLOR_DOWN = "rgba(255, 45, 85, 0.98)"; // --c-live
+  const COLOR_BEAT = "rgba(255, 255, 255, 0.95)";
+  const GUIDE_DOWN = "rgba(255, 45, 85, 0.35)";
+  const GUIDE_BEAT = "rgba(255, 255, 255, 0.10)";
+
+  const innerTop = topH;
+  const innerBottom = height - bottomH;
 
   for (const beat of beats) {
     if (beat.position_sec < startSec || beat.position_sec > endSec) continue;
     const x = Math.round(xOf(beat.position_sec));
+    if (x < 0 || x > width) continue;
 
     if (beat.is_downbeat) {
       // 縦線（控えめな赤）
-      ctx.strokeStyle = "rgba(255, 45, 85, 0.30)";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = GUIDE_DOWN;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, height);
+      ctx.moveTo(x + 0.5, innerTop);
+      ctx.lineTo(x + 0.5, innerBottom);
       ctx.stroke();
 
-      // 上下端の矩形マーカー（赤、太め）
+      // 上下リボン（赤、太め）
       ctx.fillStyle = COLOR_DOWN;
-      const w = 4;
-      const h = 7;
-      ctx.fillRect(x - w / 2, 0, w, h);
-      ctx.fillRect(x - w / 2, height - h, w, h);
+      const w = 6;
+      ctx.fillRect(x - w / 2, 0, w, topH);
+      ctx.fillRect(x - w / 2, innerBottom, w, bottomH);
+
+      // 上端の小さなノッチ
+      ctx.fillStyle = COLOR_DOWN;
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2 - 2, 0);
+      ctx.lineTo(x + w / 2 + 2, 0);
+      ctx.lineTo(x, topH + 4);
+      ctx.closePath();
+      ctx.fill();
     } else {
       // 縦線（控えめな白）
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.10)";
+      ctx.strokeStyle = GUIDE_BEAT;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, height);
+      ctx.moveTo(x + 0.5, innerTop);
+      ctx.lineTo(x + 0.5, innerBottom);
       ctx.stroke();
 
-      // 上下端の矩形マーカー（白、細め）
+      // 上下リボン（白、細め）
       ctx.fillStyle = COLOR_BEAT;
       const w = 2;
-      const h = 4;
-      ctx.fillRect(x - w / 2, 0, w, h);
-      ctx.fillRect(x - w / 2, height - h, w, h);
+      ctx.fillRect(x - w / 2, 0, w, topH);
+      ctx.fillRect(x - w / 2, innerBottom, w, bottomH);
     }
   }
 }
@@ -197,16 +271,16 @@ function drawCenterCursor(
   height: number,
 ) {
   const x = width / 2;
-  // CDJ 風の赤い縦線
-  ctx.strokeStyle = "rgba(255, 45, 85, 0.92)";
+  // CDJ 風の白い縦線（赤は拍マーカー側で使うので変更）
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(x + 0.5, 0);
   ctx.lineTo(x + 0.5, height);
   ctx.stroke();
 
-  // 上端ピンク三角
-  ctx.fillStyle = "rgba(255, 45, 85, 0.92)";
+  // 上端三角インジケータ
+  ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
   ctx.beginPath();
   ctx.moveTo(x - 5, 0);
   ctx.lineTo(x + 5, 0);

@@ -84,13 +84,13 @@ function drawDownbeats(
   width: number,
   height: number,
 ) {
-  // overview ではダウンビートのみ控えめに赤マーカー（縦線は出さない）。
-  ctx.fillStyle = "rgba(255, 45, 85, 0.55)"; // --c-live
+  // overview では密集を避けるためダウンビートのみ。上下に赤の小リボン。
+  ctx.fillStyle = "rgba(255, 45, 85, 0.75)"; // --c-live
   for (const r of ratios) {
     if (r < 0 || r > 1) continue;
     const x = Math.round(r * width);
-    ctx.fillRect(x - 1, 0, 2, 3);
-    ctx.fillRect(x - 1, height - 3, 2, 3);
+    ctx.fillRect(x - 1, 0, 2, 5);
+    ctx.fillRect(x - 1, height - 5, 2, 5);
   }
 }
 

@@ -343,7 +343,7 @@ function DeckPanel({
           positionSec={snapshot.position_sec}
           durationSec={snapshot.duration_sec ?? 0}
           windowSec={zoomWindowSec}
-          height={56}
+          height={72}
           onSeekSec={(sec) => void ipc.seek(deck, sec)}
         />
       </div>
