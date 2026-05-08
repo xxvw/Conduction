@@ -5,10 +5,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod bpm;
 pub mod decode;
 pub mod error;
 pub mod waveform;
 
+pub use bpm::{estimate_beatgrid, BeatgridEstimate};
 pub use decode::{decode_to_pcm, DecodedAudio};
 pub use error::{AnalysisError, AnalysisResult};
 pub use waveform::{generate_waveform, WaveformPreview, DEFAULT_WAVEFORM_BINS};

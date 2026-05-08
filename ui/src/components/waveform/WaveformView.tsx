@@ -1,11 +1,16 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 
+import type { BeatDto } from "@/types/beat";
 import type { WaveformPreview } from "@/types/waveform";
 
 interface WaveformViewProps {
   waveform: WaveformPreview | null;
   /** 0..1。再生位置を波形上に縦線で表示する。 */
   positionRatio: number;
+  /** ダウンビート位置を控えめに重ねる（0..1 比率の配列）。 */
+  downbeatRatios?: number[];
+  /** クリック時、その x 位置の比率（0..1）が渡される。 */
+  onSeekRatio?: (ratio: number) => void;
   height?: number;
 }
 
@@ -22,9 +27,18 @@ interface WaveformViewProps {
 export function WaveformView({
   waveform,
   positionRatio,
+  downbeatRatios,
+  onSeekRatio,
   height = 80,
 }: WaveformViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  function handleClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!onSeekRatio) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    onSeekRatio(Math.max(0, Math.min(1, ratio)));
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,10 +61,39 @@ export function WaveformView({
       drawWaveform(ctx, waveform, cssW, height);
     }
 
-    drawCursor(ctx, positionRatio, cssW, height);
-  }, [waveform, positionRatio, height]);
+    if (downbeatRatios && downbeatRatios.length > 0) {
+      drawDownbeats(ctx, downbeatRatios, cssW, height);
+    }
 
-  return <canvas ref={canvasRef} className="waveform-canvas" />;
+    drawCursor(ctx, positionRatio, cssW, height);
+  }, [waveform, positionRatio, downbeatRatios, height]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="waveform-canvas"
+      onClick={handleClick}
+      style={onSeekRatio ? { cursor: "crosshair" } : undefined}
+    />
+  );
+}
+
+function drawDownbeats(
+  ctx: CanvasRenderingContext2D,
+  ratios: number[],
+  width: number,
+  height: number,
+) {
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  ctx.lineWidth = 1;
+  for (const r of ratios) {
+    if (r < 0 || r > 1) continue;
+    const x = Math.round(r * width);
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, height);
+    ctx.stroke();
+  }
 }
 
 function drawPlaceholder(ctx: CanvasRenderingContext2D, w: number, h: number) {

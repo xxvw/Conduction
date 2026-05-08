@@ -22,6 +22,7 @@ pub enum AudioCommand {
     Play(DeckId),
     Pause(DeckId),
     Stop(DeckId),
+    Seek { deck: DeckId, position_sec: f64 },
     SetCrossfader(f32),
     SetChannelVolume { deck: DeckId, volume: f32 },
     SetMasterVolume(f32),
@@ -138,6 +139,16 @@ fn apply_command(
         AudioCommand::Play(deck) => mixer.deck(deck).play(),
         AudioCommand::Pause(deck) => mixer.deck(deck).pause(),
         AudioCommand::Stop(deck) => mixer.deck(deck).stop(),
+        AudioCommand::Seek { deck, position_sec } => {
+            let pos = if position_sec.is_finite() && position_sec >= 0.0 {
+                std::time::Duration::from_secs_f64(position_sec)
+            } else {
+                std::time::Duration::ZERO
+            };
+            if let Err(e) = mixer.deck(deck).seek(pos) {
+                error!(?e, ?deck, "seek failed");
+            }
+        }
         AudioCommand::SetCrossfader(v) => mixer.set_crossfader(v),
         AudioCommand::SetChannelVolume { deck, volume } => {
             mixer.set_channel_volume(deck, volume);

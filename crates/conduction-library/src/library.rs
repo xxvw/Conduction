@@ -232,6 +232,27 @@ impl Library {
 
     // -------- Beatgrid --------
 
+    /// BPM とビートグリッドを同時に保存し、`tracks.bpm` / `analyzed_at` を更新する。
+    pub fn save_track_analysis(
+        &mut self,
+        track_id: TrackId,
+        bpm: f32,
+        beats: &[Beat],
+    ) -> LibraryResult<()> {
+        let now = dt_to_str(Utc::now());
+        let affected = self.conn.execute(
+            "UPDATE tracks SET bpm = ?2, analyzed_at = ?3, updated_at = ?3 WHERE id = ?1",
+            params![track_id.as_uuid().to_string(), bpm as f64, now],
+        )?;
+        if affected == 0 {
+            return Err(LibraryError::Unsupported(format!(
+                "track not found for analysis: {track_id}"
+            )));
+        }
+        self.replace_beatgrid(track_id, beats)?;
+        Ok(())
+    }
+
     /// 既存のビートグリッドを差し替える（一括 upsert）。
     pub fn replace_beatgrid(
         &mut self,
@@ -601,5 +622,28 @@ mod tests {
         let lib = Library::in_memory().unwrap();
         let id = conduction_core::TrackId::new();
         assert!(lib.load_waveform(id).unwrap().is_none());
+    }
+
+    #[test]
+    fn save_track_analysis_updates_bpm_and_beats() {
+        let mut lib = Library::in_memory().unwrap();
+        let track = sample_track();
+        lib.insert_track(&track).unwrap();
+
+        let beats = vec![
+            Beat::new(0.0, true),
+            Beat::new(0.5, false),
+            Beat::new(1.0, false),
+            Beat::new(1.5, false),
+        ];
+        lib.save_track_analysis(track.id, 120.5, &beats).unwrap();
+
+        let got = lib.get_track(track.id).unwrap().unwrap();
+        assert!((got.bpm - 120.5).abs() < 0.01);
+        assert!(got.analyzed_at.is_some());
+
+        let stored = lib.load_beatgrid(track.id).unwrap();
+        assert_eq!(stored.len(), 4);
+        assert!(stored[0].is_downbeat);
     }
 }

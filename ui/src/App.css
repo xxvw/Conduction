@@ -54,6 +54,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
+  cursor: default;
+  transition: border-color 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)),
+    box-shadow 160ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
+}
+.deck[data-active="true"] {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-accent) 30%, transparent);
 }
 
 .deck-header {
@@ -150,10 +157,115 @@
 .deck-waveform[data-id="B"] {
   border-color: color-mix(in srgb, var(--c-deck-b) 30%, var(--c-ink-5));
 }
-.waveform-canvas {
+.deck-waveform-zoom {
+  background: var(--c-ink-1);
+  margin-top: var(--s-2);
+}
+.waveform-canvas,
+.waveform-zoom-canvas {
   display: block;
   width: 100%;
-  height: 88px;
+}
+.waveform-canvas { height: 84px; }
+.waveform-zoom-canvas { height: 56px; }
+
+/* --- Deck BPM readout (CDJ style) --- */
+.deck-bpm-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  padding: 2px var(--s-3);
+  border-radius: var(--r-2);
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+}
+.deck-bpm-readout[data-id="A"] {
+  border-color: color-mix(in srgb, var(--c-deck-a) 35%, var(--c-ink-5));
+}
+.deck-bpm-readout[data-id="B"] {
+  border-color: color-mix(in srgb, var(--c-deck-b) 35%, var(--c-ink-5));
+}
+.deck-bpm-value {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--c-ink-11);
+  letter-spacing: 0.02em;
+}
+.deck-bpm-unit {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  color: var(--c-ink-9);
+  text-transform: uppercase;
+}
+.deck-bpm-base {
+  font-size: var(--fs-small);
+  color: var(--c-ink-7);
+}
+
+.tempo-pct { color: var(--c-ink-11); }
+.tempo-bpm { color: var(--c-ink-9); }
+
+/* --- KeyConfig bar --- */
+.keyconfig-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3) var(--s-5);
+  padding: var(--s-2) var(--s-5);
+  border-top: 1px solid var(--c-ink-5);
+  background: var(--c-ink-1);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.05em;
+  color: var(--c-ink-9);
+  flex-shrink: 0;
+}
+.keyconfig-active {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.keyconfig-active-label {
+  color: var(--c-ink-7);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.keyconfig-active-deck {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.keyconfig-active-deck[data-id="A"] { color: var(--c-deck-a); }
+.keyconfig-active-deck[data-id="B"] { color: var(--c-deck-b); }
+.keyconfig-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--c-ink-5);
+}
+.keyconfig-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  white-space: nowrap;
+}
+.keyconfig-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  color: var(--c-ink-11);
+  box-shadow: var(--inner-bottom, inset 0 -1px 0 rgba(0, 0, 0, 0.3));
+}
+.keyconfig-label {
+  color: var(--c-ink-9);
+  letter-spacing: 0.04em;
 }
 .deck-status-row {
   display: flex;

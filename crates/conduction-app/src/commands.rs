@@ -3,7 +3,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use conduction_analysis::{decode_to_pcm, generate_waveform, WaveformPreview, DEFAULT_WAVEFORM_BINS};
+use conduction_analysis::{
+    decode_to_pcm, estimate_beatgrid, generate_waveform, WaveformPreview, DEFAULT_WAVEFORM_BINS,
+};
+use conduction_core::Beat;
+use serde::Serialize;
 use conduction_core::TrackId;
 use conduction_library::{build_track_from_file, Library};
 use parking_lot::Mutex;
@@ -52,6 +56,22 @@ pub fn pause(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
 pub fn stop(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
     let id = parse_deck(&deck)?;
     send(&audio, AudioCommand::Stop(id))
+}
+
+#[tauri::command]
+pub fn seek_deck(
+    audio: State<'_, AudioHandle>,
+    deck: String,
+    position_sec: f64,
+) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(
+        &audio,
+        AudioCommand::Seek {
+            deck: id,
+            position_sec,
+        },
+    )
 }
 
 #[tauri::command]
@@ -250,10 +270,53 @@ fn analyze_and_save_internal(
     path: &Path,
 ) -> Result<WaveformPreview, String> {
     let audio = decode_to_pcm(path).map_err(|e| e.to_string())?;
+    let total_sec = audio.duration_sec();
     let wf = generate_waveform(&audio, DEFAULT_WAVEFORM_BINS);
-    let lib = library.lock();
+    let estimate = estimate_beatgrid(&audio);
+
+    let mut lib = library.lock();
     lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())?;
+    if let Some(est) = estimate {
+        let beats = est.beats(total_sec);
+        info!(
+            bpm = est.bpm,
+            confidence = est.confidence,
+            beats = beats.len(),
+            "beatgrid estimated"
+        );
+        lib.save_track_analysis(track_id, est.bpm, &beats)
+            .map_err(|e| e.to_string())?;
+    }
     Ok(wf)
+}
+
+/// UI に渡すビート1拍分の DTO。
+#[derive(Debug, Clone, Serialize)]
+pub struct BeatDto {
+    pub position_sec: f64,
+    pub is_downbeat: bool,
+}
+
+impl From<&Beat> for BeatDto {
+    fn from(b: &Beat) -> Self {
+        Self {
+            position_sec: b.position_sec,
+            is_downbeat: b.is_downbeat,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_track_beats(
+    library: State<'_, LibraryHandle>,
+    id: String,
+) -> Result<Vec<BeatDto>, String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
+    library.with_library(|lib| {
+        lib.load_beatgrid(TrackId::from_uuid(uuid))
+            .map(|beats| beats.iter().map(BeatDto::from).collect())
+            .map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]

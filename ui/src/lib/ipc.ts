@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { BeatDto } from "@/types/beat";
 import type { DeckId, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 import type { WaveformPreview } from "@/types/waveform";
@@ -33,6 +34,9 @@ export const ipc = {
   },
   stop(deck: DeckId) {
     return call<void>("stop", { deck });
+  },
+  seek(deck: DeckId, positionSec: number) {
+    return call<void>("seek_deck", { deck, positionSec });
   },
   setCrossfader(position: number) {
     return call<void>("set_crossfader", { position });
@@ -70,5 +74,8 @@ export const ipc = {
   },
   getWaveform(id: string) {
     return call<WaveformPreview | null>("get_waveform", { id });
+  },
+  getTrackBeats(id: string) {
+    return call<BeatDto[]>("get_track_beats", { id });
   },
 };

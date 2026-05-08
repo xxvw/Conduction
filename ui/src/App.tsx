@@ -2,11 +2,16 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
 import "./App.css";
+import { KeyConfigBar } from "@/components/keyconfig/KeyConfigBar";
 import { WaveformView } from "@/components/waveform/WaveformView";
+import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
+import { useBeats } from "@/hooks/useBeats";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
+import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
 import { useWaveform } from "@/hooks/useWaveform";
 import { ipc } from "@/lib/ipc";
+import { DEFAULT_BINDINGS, type ShortcutAction } from "@/lib/keybindings";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import type { DeckId, DeckSnapshot, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
@@ -17,6 +22,7 @@ const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 
 export function App() {
   const [screen, setScreen] = useState<Screen>("mix");
+  const [activeDeck, setActiveDeck] = useState<DeckId>("A");
   const status = useMixerStatus(100);
   const tracksHandle = useTracks();
 
@@ -28,8 +34,52 @@ export function App() {
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
+    setActiveDeck(deck);
     setScreen("mix");
   }, []);
+
+  // ショートカット: シーク + デッキ切替 + Play/Pause
+  const handleShortcut = useCallback(
+    (action: ShortcutAction) => {
+      if (action === "focus-deck-a") {
+        setActiveDeck("A");
+        return;
+      }
+      if (action === "focus-deck-b") {
+        setActiveDeck("B");
+        return;
+      }
+      if (!status) return;
+      const snap = activeDeck === "A" ? status.deck_a : status.deck_b;
+      if (!snap.loaded_path) return;
+
+      if (action === "play-pause") {
+        if (snap.state === "play") void ipc.pause(activeDeck);
+        else void ipc.play(activeDeck);
+        return;
+      }
+
+      // シーク系: BPM があれば拍単位、なければ 0.5s 単位でフォールバック
+      const summary = trackByPath.get(snap.loaded_path);
+      const bpm = summary?.bpm ?? 0;
+      const beatSec = bpm > 0 ? 60 / (bpm * snap.playback_speed) : 0.5;
+
+      const beats =
+        action === "seek-back-1" ? -1 :
+        action === "seek-fwd-1"  ? +1 :
+        action === "seek-back-2" ? -2 :
+        action === "seek-fwd-2"  ? +2 :
+        action === "seek-back-4" ? -4 :
+        action === "seek-fwd-4"  ? +4 : 0;
+      if (beats === 0) return;
+
+      const target = Math.max(0, snap.position_sec + beats * beatSec);
+      void ipc.seek(activeDeck, target);
+    },
+    [status, activeDeck, trackByPath],
+  );
+
+  useShortcuts({ onAction: handleShortcut });
 
   return (
     <div className="app">
@@ -57,7 +107,12 @@ export function App() {
 
       <main className={screen === "mix" ? "main main-mix" : "main main-library"}>
         {screen === "mix" ? (
-          <MixScreen status={status} trackByPath={trackByPath} />
+          <MixScreen
+            status={status}
+            trackByPath={trackByPath}
+            activeDeck={activeDeck}
+            onSelectDeck={setActiveDeck}
+          />
         ) : (
           <LibraryScreen
             tracks={tracksHandle.tracks}
@@ -68,6 +123,10 @@ export function App() {
           />
         )}
       </main>
+
+      {screen === "mix" && (
+        <KeyConfigBar bindings={DEFAULT_BINDINGS} activeDeck={activeDeck} />
+      )}
     </div>
   );
 }
@@ -75,15 +134,29 @@ export function App() {
 function MixScreen({
   status,
   trackByPath,
+  activeDeck,
+  onSelectDeck,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
+  activeDeck: DeckId;
+  onSelectDeck: (deck: DeckId) => void;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
     <>
-      <DeckPanel snapshot={status.deck_a} trackByPath={trackByPath} />
-      <DeckPanel snapshot={status.deck_b} trackByPath={trackByPath} />
+      <DeckPanel
+        snapshot={status.deck_a}
+        trackByPath={trackByPath}
+        isActive={activeDeck === "A"}
+        onActivate={() => onSelectDeck("A")}
+      />
+      <DeckPanel
+        snapshot={status.deck_b}
+        trackByPath={trackByPath}
+        isActive={activeDeck === "B"}
+        onActivate={() => onSelectDeck("B")}
+      />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
   );
@@ -109,15 +182,30 @@ function MasterSlim({ volume }: { volume: number }) {
 function DeckPanel({
   snapshot,
   trackByPath,
+  isActive,
+  onActivate,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
+  isActive: boolean;
+  onActivate: () => void;
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
     ? trackByPath.get(snapshot.loaded_path) ?? null
     : null;
   const waveform = useWaveform(loadedTrack?.id ?? null);
+  const beats = useBeats(loadedTrack?.id ?? null);
+
+  const baseBpm = loadedTrack?.bpm ?? 0;
+  const effectiveBpm = baseBpm > 0 ? baseBpm * snapshot.playback_speed : 0;
+
+  const downbeatRatios = useMemo(() => {
+    if (!snapshot.duration_sec || snapshot.duration_sec <= 0) return [];
+    return beats
+      .filter((b) => b.is_downbeat)
+      .map((b) => b.position_sec / snapshot.duration_sec!);
+  }, [beats, snapshot.duration_sec]);
 
   const handleLoad = useCallback(async () => {
     const path = await open({
@@ -149,7 +237,11 @@ function DeckPanel({
       : 0;
 
   return (
-    <section className="deck">
+    <section
+      className="deck"
+      data-active={isActive}
+      onClick={onActivate}
+    >
       <div className="deck-header">
         <div>
           <div className="deck-label" data-id={deck}>
@@ -159,6 +251,15 @@ function DeckPanel({
             <span className="state-badge" data-state={snapshot.state}>
               {snapshot.state}
             </span>
+            {baseBpm > 0 && (
+              <span className="deck-bpm-readout" data-id={deck}>
+                <span className="deck-bpm-value">{effectiveBpm.toFixed(2)}</span>
+                <span className="deck-bpm-unit">BPM</span>
+                {Math.abs(snapshot.playback_speed - 1.0) > 1e-4 && (
+                  <span className="deck-bpm-base">({baseBpm.toFixed(2)})</span>
+                )}
+              </span>
+            )}
             {loadedTrack && !waveform && (
               <span
                 className="analyzing-bar"
@@ -185,7 +286,28 @@ function DeckPanel({
       </div>
 
       <div className="deck-waveform" data-id={deck}>
-        <WaveformView waveform={waveform} positionRatio={positionRatio} height={88} />
+        <WaveformView
+          waveform={waveform}
+          positionRatio={positionRatio}
+          downbeatRatios={downbeatRatios}
+          height={84}
+          onSeekRatio={(r) => {
+            if (snapshot.duration_sec && snapshot.duration_sec > 0) {
+              void ipc.seek(deck, r * snapshot.duration_sec);
+            }
+          }}
+        />
+      </div>
+      <div className="deck-waveform deck-waveform-zoom" data-id={deck}>
+        <WaveformZoomView
+          waveform={waveform}
+          beats={beats}
+          positionSec={snapshot.position_sec}
+          durationSec={snapshot.duration_sec ?? 0}
+          windowSec={4}
+          height={56}
+          onSeekSec={(sec) => void ipc.seek(deck, sec)}
+        />
       </div>
 
       <div className="deck-transport">
@@ -232,8 +354,16 @@ function DeckPanel({
         <div className="control-label">
           <span>TEMPO</span>
           <span className="value">
-            {snapshot.tempo_adjust >= 0 ? "+" : ""}
-            {(snapshot.tempo_adjust * snapshot.tempo_range_percent).toFixed(2)}%
+            <span className="tempo-pct">
+              {snapshot.tempo_adjust >= 0 ? "+" : ""}
+              {(snapshot.tempo_adjust * snapshot.tempo_range_percent).toFixed(2)}%
+            </span>
+            {effectiveBpm > 0 && (
+              <span className="tempo-bpm">
+                {" · "}
+                {effectiveBpm.toFixed(2)} BPM
+              </span>
+            )}
           </span>
         </div>
         <input

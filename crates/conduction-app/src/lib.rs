@@ -28,6 +28,7 @@ pub fn run() {
             commands::play,
             commands::pause,
             commands::stop,
+            commands::seek_deck,
             commands::set_crossfader,
             commands::set_channel_volume,
             commands::set_master_volume,
@@ -39,6 +40,7 @@ pub fn run() {
             commands::delete_track,
             commands::analyze_track,
             commands::get_waveform,
+            commands::get_track_beats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

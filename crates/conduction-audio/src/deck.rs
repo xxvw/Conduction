@@ -85,6 +85,9 @@ pub struct Deck {
     tempo_range: TempoRange,
     /// -1.0 .. 1.0（フェーダー位置相当）。実速度は `1 + tempo_adjust * range.max_adjust()`。
     tempo_adjust: f32,
+
+    /// シーク後の起点。`position()` が `started_at + offset` を返すために使う。
+    position_offset: Duration,
 }
 
 impl Deck {
@@ -105,6 +108,7 @@ impl Deck {
             effective_volume: 1.0,
             tempo_range: TempoRange::default(),
             tempo_adjust: 0.0,
+            position_offset: Duration::ZERO,
         })
     }
 
@@ -134,6 +138,7 @@ impl Deck {
         self.started_at = None;
         self.paused_accum = Duration::ZERO;
         self.paused_at = None;
+        self.position_offset = Duration::ZERO;
 
         debug!(
             deck = ?self.id,
@@ -169,6 +174,24 @@ impl Deck {
         self.started_at = None;
         self.paused_accum = Duration::ZERO;
         self.paused_at = None;
+        self.position_offset = Duration::ZERO;
+    }
+
+    /// 再生位置を指定秒に移動する。Sink::try_seek が成功した場合のみ
+    /// 内部の position 計算もリセットする。
+    pub fn seek(&mut self, position: Duration) -> AudioResult<()> {
+        self.sink
+            .try_seek(position)
+            .map_err(|e| AudioError::Playback(format!("seek failed: {e}")))?;
+        self.started_at = Some(Instant::now());
+        self.paused_accum = Duration::ZERO;
+        self.paused_at = if self.sink.is_paused() {
+            Some(Instant::now())
+        } else {
+            None
+        };
+        self.position_offset = position;
+        Ok(())
     }
 
     pub fn is_playing(&self) -> bool {
@@ -189,13 +212,14 @@ impl Deck {
 
     pub fn position(&self) -> Duration {
         let Some(start) = self.started_at else {
-            return Duration::ZERO;
+            return self.position_offset;
         };
         let raw = match self.paused_at {
             Some(at) => at.saturating_duration_since(start),
             None => start.elapsed(),
         };
-        raw.saturating_sub(self.paused_accum)
+        let elapsed = raw.saturating_sub(self.paused_accum);
+        self.position_offset + elapsed
     }
 
     /// チャンネルボリュームを設定（0.0〜2.0）。
