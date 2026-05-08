@@ -11,7 +11,12 @@ import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
 import { useWaveform } from "@/hooks/useWaveform";
 import { ipc } from "@/lib/ipc";
-import { DEFAULT_BINDINGS, type ShortcutAction } from "@/lib/keybindings";
+import {
+  DEFAULT_BINDINGS,
+  DEFAULT_ZOOM_SEC,
+  ZOOM_LEVELS_SEC,
+  type ShortcutAction,
+} from "@/lib/keybindings";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import type { DeckId, DeckSnapshot, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
@@ -23,6 +28,7 @@ const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 export function App() {
   const [screen, setScreen] = useState<Screen>("mix");
   const [activeDeck, setActiveDeck] = useState<DeckId>("A");
+  const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
   const status = useMixerStatus(100);
   const tracksHandle = useTracks();
 
@@ -47,6 +53,23 @@ export function App() {
       }
       if (action === "focus-deck-b") {
         setActiveDeck("B");
+        return;
+      }
+      if (action === "zoom-in") {
+        setZoomWindowSec((current) => {
+          const idx = ZOOM_LEVELS_SEC.indexOf(current);
+          if (idx <= 0) return ZOOM_LEVELS_SEC[0]!;
+          return ZOOM_LEVELS_SEC[idx - 1]!;
+        });
+        return;
+      }
+      if (action === "zoom-out") {
+        setZoomWindowSec((current) => {
+          const idx = ZOOM_LEVELS_SEC.indexOf(current);
+          if (idx < 0) return DEFAULT_ZOOM_SEC;
+          if (idx >= ZOOM_LEVELS_SEC.length - 1) return ZOOM_LEVELS_SEC[ZOOM_LEVELS_SEC.length - 1]!;
+          return ZOOM_LEVELS_SEC[idx + 1]!;
+        });
         return;
       }
       if (!status) return;
@@ -112,6 +135,7 @@ export function App() {
             trackByPath={trackByPath}
             activeDeck={activeDeck}
             onSelectDeck={setActiveDeck}
+            zoomWindowSec={zoomWindowSec}
           />
         ) : (
           <LibraryScreen
@@ -125,7 +149,11 @@ export function App() {
       </main>
 
       {screen === "mix" && (
-        <KeyConfigBar bindings={DEFAULT_BINDINGS} activeDeck={activeDeck} />
+        <KeyConfigBar
+          bindings={DEFAULT_BINDINGS}
+          activeDeck={activeDeck}
+          zoomWindowSec={zoomWindowSec}
+        />
       )}
     </div>
   );
@@ -136,11 +164,13 @@ function MixScreen({
   trackByPath,
   activeDeck,
   onSelectDeck,
+  zoomWindowSec,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
   activeDeck: DeckId;
   onSelectDeck: (deck: DeckId) => void;
+  zoomWindowSec: number;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -150,12 +180,14 @@ function MixScreen({
         trackByPath={trackByPath}
         isActive={activeDeck === "A"}
         onActivate={() => onSelectDeck("A")}
+        zoomWindowSec={zoomWindowSec}
       />
       <DeckPanel
         snapshot={status.deck_b}
         trackByPath={trackByPath}
         isActive={activeDeck === "B"}
         onActivate={() => onSelectDeck("B")}
+        zoomWindowSec={zoomWindowSec}
       />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
@@ -184,11 +216,13 @@ function DeckPanel({
   trackByPath,
   isActive,
   onActivate,
+  zoomWindowSec,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
   isActive: boolean;
   onActivate: () => void;
+  zoomWindowSec: number;
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
@@ -304,7 +338,7 @@ function DeckPanel({
           beats={beats}
           positionSec={snapshot.position_sec}
           durationSec={snapshot.duration_sec ?? 0}
-          windowSec={4}
+          windowSec={zoomWindowSec}
           height={56}
           onSeekSec={(sec) => void ipc.seek(deck, sec)}
         />

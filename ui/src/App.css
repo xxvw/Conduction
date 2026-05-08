@@ -238,6 +238,13 @@
 }
 .keyconfig-active-deck[data-id="A"] { color: var(--c-deck-a); }
 .keyconfig-active-deck[data-id="B"] { color: var(--c-deck-b); }
+.keyconfig-zoom-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--c-accent);
+  letter-spacing: 0.05em;
+}
 .keyconfig-divider {
   width: 1px;
   height: 16px;
