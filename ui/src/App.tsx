@@ -341,6 +341,14 @@ function DeckPanel({
   // mixer snapshot は 10 Hz だが、波形カーソルは 60 Hz で動かしたいので補間する。
   const livePosSec = useInterpolatedPosition(snapshot);
 
+  // overview に表示する Hot Cue 比率（duration 基準）
+  const hotCueRatios = useMemo(() => {
+    if (!snapshot.duration_sec || snapshot.duration_sec <= 0) return [];
+    return hotCues.cues
+      .filter((c) => c.position_sec >= 0 && c.position_sec <= snapshot.duration_sec!)
+      .map((c) => ({ slot: c.slot, ratio: c.position_sec / snapshot.duration_sec! }));
+  }, [hotCues.cues, snapshot.duration_sec]);
+
   const handleLoad = useCallback(async () => {
     const path = await open({
       multiple: false,
@@ -423,6 +431,7 @@ function DeckPanel({
         <WaveformView
           waveform={waveform}
           positionRatio={positionRatio}
+          hotCueRatios={hotCueRatios}
           height={84}
           onSeekRatio={(r) => {
             if (snapshot.duration_sec && snapshot.duration_sec > 0) {

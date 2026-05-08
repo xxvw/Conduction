@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from "react";
 
-import type { BeatDto } from "@/types/beat";
 import type { WaveformPreview } from "@/types/waveform";
 
 interface WaveformViewProps {
@@ -9,10 +8,23 @@ interface WaveformViewProps {
   positionRatio: number;
   /** ダウンビート位置を控えめに重ねる（0..1 比率の配列）。 */
   downbeatRatios?: number[];
+  /** Hot Cue を比率 (0..1) で重ねる。 */
+  hotCueRatios?: { slot: number; ratio: number }[];
   /** クリック時、その x 位置の比率（0..1）が渡される。 */
   onSeekRatio?: (ratio: number) => void;
   height?: number;
 }
+
+const HOTCUE_COLORS = [
+  "#48E0F4", // 1 cyan
+  "#FFC547", // 2 yellow
+  "#7AE655", // 3 green
+  "#E84A5C", // 4 red
+  "#FF7A33", // 5 orange
+  "#A98AFF", // 6 violet
+  "#FF6BB1", // 7 pink
+  "#3E96FF", // 8 blue
+];
 
 /**
  * rekordbox 風の 3 バンド波形プレビュー。
@@ -28,6 +40,7 @@ export function WaveformView({
   waveform,
   positionRatio,
   downbeatRatios,
+  hotCueRatios,
   onSeekRatio,
   height = 80,
 }: WaveformViewProps) {
@@ -64,9 +77,12 @@ export function WaveformView({
     if (downbeatRatios && downbeatRatios.length > 0) {
       drawDownbeats(ctx, downbeatRatios, cssW, height);
     }
+    if (hotCueRatios && hotCueRatios.length > 0) {
+      drawHotCues(ctx, hotCueRatios, cssW, height);
+    }
 
     drawCursor(ctx, positionRatio, cssW, height);
-  }, [waveform, positionRatio, downbeatRatios, height]);
+  }, [waveform, positionRatio, downbeatRatios, hotCueRatios, height]);
 
   return (
     <canvas
@@ -91,6 +107,44 @@ function drawDownbeats(
     const x = Math.round(r * width);
     ctx.fillRect(x - 1, 0, 2, 5);
     ctx.fillRect(x - 1, height - 5, 2, 5);
+  }
+}
+
+/** Hot Cue を上端に色付きフラグ + 縦線で表示。 */
+function drawHotCues(
+  ctx: CanvasRenderingContext2D,
+  cues: { slot: number; ratio: number }[],
+  width: number,
+  height: number,
+) {
+  for (const c of cues) {
+    if (c.ratio < 0 || c.ratio > 1) continue;
+    const x = Math.round(c.ratio * width);
+    const color = HOTCUE_COLORS[(c.slot - 1) % HOTCUE_COLORS.length]!;
+
+    // 上端の旗（小さな矩形にスロット番号）
+    const flagW = 12;
+    const flagH = 9;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, 0, flagW, flagH);
+    // 番号
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.font = "bold 8px JetBrains Mono, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(c.slot), x + flagW / 2, flagH / 2 + 0.5);
+
+    // 細い縦線
+    ctx.strokeStyle = `${color}A0`; // 約63% alpha
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, flagH);
+    ctx.lineTo(x + 0.5, height);
+    ctx.stroke();
+
+    // 下端のtick
+    ctx.fillStyle = color;
+    ctx.fillRect(x - 1, height - 4, 3, 4);
   }
 }
 
