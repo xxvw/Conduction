@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
+use conduction_analysis::WaveformPreview;
 use conduction_core::{Beat, Cue, CueId, Track, TrackId};
 use directories::ProjectDirs;
 use rusqlite::{params, Connection};
@@ -277,6 +278,94 @@ impl Library {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(beats)
     }
+
+    // -------- Waveform preview --------
+
+    pub fn save_waveform(
+        &self,
+        track_id: TrackId,
+        wf: &WaveformPreview,
+    ) -> LibraryResult<()> {
+        if wf.low.len() != wf.sample_count as usize
+            || wf.mid.len() != wf.sample_count as usize
+            || wf.high.len() != wf.sample_count as usize
+        {
+            return Err(LibraryError::Unsupported(format!(
+                "waveform dimensions inconsistent: declared {}, got low={} mid={} high={}",
+                wf.sample_count,
+                wf.low.len(),
+                wf.mid.len(),
+                wf.high.len()
+            )));
+        }
+
+        let now = dt_to_str(Utc::now());
+        self.conn.execute(
+            "INSERT INTO waveforms
+                (track_id, sample_count, low_blob, mid_blob, high_blob, generated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(track_id) DO UPDATE SET
+                sample_count = excluded.sample_count,
+                low_blob = excluded.low_blob,
+                mid_blob = excluded.mid_blob,
+                high_blob = excluded.high_blob,
+                generated_at = excluded.generated_at",
+            params![
+                track_id.as_uuid().to_string(),
+                wf.sample_count as i64,
+                f32_slice_to_bytes(&wf.low),
+                f32_slice_to_bytes(&wf.mid),
+                f32_slice_to_bytes(&wf.high),
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_waveform(&self, track_id: TrackId) -> LibraryResult<Option<WaveformPreview>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT sample_count, low_blob, mid_blob, high_blob
+             FROM waveforms WHERE track_id = ?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![track_id.as_uuid().to_string()])?;
+        match rows.next()? {
+            Some(row) => {
+                let sample_count: i64 = row.get(0)?;
+                let low: Vec<u8> = row.get(1)?;
+                let mid: Vec<u8> = row.get(2)?;
+                let high: Vec<u8> = row.get(3)?;
+                Ok(Some(WaveformPreview {
+                    sample_count: sample_count as u32,
+                    low: bytes_to_f32_vec(&low)?,
+                    mid: bytes_to_f32_vec(&mid)?,
+                    high: bytes_to_f32_vec(&high)?,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+fn f32_slice_to_bytes(v: &[f32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(v.len() * 4);
+    for &f in v {
+        out.extend_from_slice(&f.to_le_bytes());
+    }
+    out
+}
+
+fn bytes_to_f32_vec(b: &[u8]) -> LibraryResult<Vec<f32>> {
+    if b.len() % 4 != 0 {
+        return Err(LibraryError::Unsupported(format!(
+            "blob length {} not a multiple of 4 (expected f32 LE bytes)",
+            b.len()
+        )));
+    }
+    let mut out = Vec::with_capacity(b.len() / 4);
+    for chunk in b.chunks_exact(4) {
+        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -455,5 +544,62 @@ mod tests {
         lib.insert_track(&track).unwrap();
         let err = lib.insert_track(&track).unwrap_err();
         matches!(err, LibraryError::Sqlite(_));
+    }
+
+    #[test]
+    fn waveform_round_trip() {
+        let mut lib = Library::in_memory().unwrap();
+        let track = sample_track();
+        lib.insert_track(&track).unwrap();
+
+        let bins = 8;
+        let wf = WaveformPreview {
+            sample_count: bins as u32,
+            low: (0..bins).map(|i| i as f32 / bins as f32).collect(),
+            mid: (0..bins).map(|i| (bins - i) as f32 / bins as f32).collect(),
+            high: vec![0.5; bins],
+        };
+        lib.save_waveform(track.id, &wf).unwrap();
+
+        let got = lib.load_waveform(track.id).unwrap().unwrap();
+        assert_eq!(got.sample_count, wf.sample_count);
+        assert_eq!(got.low, wf.low);
+        assert_eq!(got.mid, wf.mid);
+        assert_eq!(got.high, wf.high);
+
+        // upsert で差し替え。
+        let wf2 = WaveformPreview::empty(bins);
+        lib.save_waveform(track.id, &wf2).unwrap();
+        let got = lib.load_waveform(track.id).unwrap().unwrap();
+        assert!(got.low.iter().all(|v| *v == 0.0));
+
+        // delete_track で cascade 削除。
+        lib.delete_track(track.id).unwrap();
+        assert!(lib.load_waveform(track.id).unwrap().is_none());
+
+        // 仮の追加: 一貫性チェックも確認。
+        // (削除後は track 自体が無いので、別のトラックで再インサート)
+        let t2 = {
+            let mut t = sample_track();
+            t.path = PathBuf::from("/tmp/song2.mp3");
+            t.id = conduction_core::TrackId::new();
+            t
+        };
+        lib.insert_track(&t2).unwrap();
+        let inconsistent = WaveformPreview {
+            sample_count: 4,
+            low: vec![0.0; 4],
+            mid: vec![0.0; 3], // 1 short
+            high: vec![0.0; 4],
+        };
+        let err = lib.save_waveform(t2.id, &inconsistent).unwrap_err();
+        assert!(matches!(err, LibraryError::Unsupported(_)));
+    }
+
+    #[test]
+    fn load_waveform_missing_returns_none() {
+        let lib = Library::in_memory().unwrap();
+        let id = conduction_core::TrackId::new();
+        assert!(lib.load_waveform(id).unwrap().is_none());
     }
 }

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { DeckId, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
+import type { WaveformPreview } from "@/types/waveform";
 
 export const ipc = {
   // --- Mixer / Deck ---
@@ -45,5 +46,13 @@ export const ipc = {
   },
   deleteTrack(id: string) {
     return invoke<void>("delete_track", { id });
+  },
+
+  // --- Analysis / Waveform ---
+  analyzeTrack(id: string) {
+    return invoke<WaveformPreview>("analyze_track", { id });
+  },
+  getWaveform(id: string) {
+    return invoke<WaveformPreview | null>("get_waveform", { id });
   },
 };

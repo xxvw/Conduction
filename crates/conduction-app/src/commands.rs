@@ -1,10 +1,12 @@
 //! Tauri command handlers. UI から呼ばれるエンドポイント。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use conduction_analysis::{decode_to_pcm, generate_waveform, WaveformPreview, DEFAULT_WAVEFORM_BINS};
 use conduction_core::TrackId;
 use conduction_library::build_track_from_file;
 use tauri::State;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
@@ -111,14 +113,70 @@ pub fn import_track(
 ) -> Result<TrackSummary, String> {
     let path_buf = PathBuf::from(&path);
     let track = build_track_from_file(&path_buf).map_err(|e| e.to_string())?;
-    library.with_library(|lib| {
+    let stored = library.with_library(|lib| -> Result<_, String> {
         let id = lib.upsert_track_by_path(&track).map_err(|e| e.to_string())?;
         let stored = lib
             .get_track(id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "track disappeared after insert".to_string())?;
-        Ok(TrackSummary::from_track(&stored))
+        Ok(stored)
+    })?;
+
+    // 既存の波形が無ければ自動生成。失敗してもインポート自体は成功扱いにする。
+    let needs_waveform = library
+        .with_library(|lib| lib.load_waveform(stored.id).map(|w| w.is_none()))
+        .unwrap_or(true);
+    if needs_waveform {
+        if let Err(e) = analyze_and_save(&library, stored.id, &stored.path) {
+            warn!(error = %e, path = %stored.path.display(), "auto analyze failed");
+        }
+    }
+
+    Ok(TrackSummary::from_track(&stored))
+}
+
+#[tauri::command]
+pub fn analyze_track(
+    library: State<'_, LibraryHandle>,
+    id: String,
+) -> Result<WaveformPreview, String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
+    let track_id = TrackId::from_uuid(uuid);
+
+    let path = library.with_library(|lib| -> Result<PathBuf, String> {
+        let t = lib
+            .get_track(track_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("track not found: {id}"))?;
+        Ok(t.path)
+    })?;
+
+    analyze_and_save(&library, track_id, &path)
+}
+
+#[tauri::command]
+pub fn get_waveform(
+    library: State<'_, LibraryHandle>,
+    id: String,
+) -> Result<Option<WaveformPreview>, String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
+    library.with_library(|lib| {
+        lib.load_waveform(TrackId::from_uuid(uuid))
+            .map_err(|e| e.to_string())
     })
+}
+
+fn analyze_and_save(
+    library: &LibraryHandle,
+    track_id: TrackId,
+    path: &Path,
+) -> Result<WaveformPreview, String> {
+    let audio = decode_to_pcm(path).map_err(|e| e.to_string())?;
+    let wf = generate_waveform(&audio, DEFAULT_WAVEFORM_BINS);
+    library.with_library(|lib| {
+        lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())
+    })?;
+    Ok(wf)
 }
 
 #[tauri::command]

@@ -10,6 +10,7 @@ description = "Library management and SQLite persistence for Conduction."
 
 [dependencies]
 conduction-core.workspace = true
+conduction-analysis.workspace = true
 rusqlite.workspace = true
 directories.workspace = true
 uuid.workspace = true

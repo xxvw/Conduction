@@ -1,16 +1,25 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
-import { useTracks } from "@/hooks/useTracks";
 import { ipc } from "@/lib/ipc";
 import type { DeckId } from "@/types/mixer";
+import type { TrackSummary } from "@/types/track";
 
 interface LibraryScreenProps {
+  tracks: TrackSummary[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
   onLoadToDeck: (deck: DeckId, path: string) => void;
 }
 
-export function LibraryScreen({ onLoadToDeck }: LibraryScreenProps) {
-  const { tracks, loading, error, refresh } = useTracks();
+export function LibraryScreen({
+  tracks,
+  loading,
+  error,
+  refresh,
+  onLoadToDeck,
+}: LibraryScreenProps) {
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
 

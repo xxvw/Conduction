@@ -6,10 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Track analysis (BPM, key, energy, structure) for Conduction."
+description = "Track analysis (BPM, key, energy, structure, waveform) for Conduction."
 
 [dependencies]
 conduction-core.workspace = true
-# aubio-rs.workspace = true  # 有効化はフェーズ3で
+symphonia.workspace = true
+biquad.workspace = true
+serde.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
+# aubio-rs.workspace = true  # 有効化はフェーズ3b-5で

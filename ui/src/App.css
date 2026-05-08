@@ -130,6 +130,46 @@
 .pos .sep { margin: 0 var(--s-2); color: var(--c-ink-7); }
 .pos .spd { color: var(--c-ink-7); margin-left: var(--s-3); }
 
+.deck-waveform {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    var(--c-ink-1) 0%,
+    var(--c-ink-2) 50%,
+    var(--c-ink-1) 100%
+  );
+  border-radius: var(--r-3);
+  border: 1px solid var(--c-ink-4);
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--inner-bottom, inset 0 -1px 0 rgba(0, 0, 0, 0.4));
+}
+.deck-waveform[data-id="A"] {
+  border-color: color-mix(in srgb, var(--c-deck-a) 30%, var(--c-ink-5));
+}
+.deck-waveform[data-id="B"] {
+  border-color: color-mix(in srgb, var(--c-deck-b) 30%, var(--c-ink-5));
+}
+.waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 88px;
+}
+.waveform-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--c-ink-9);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--c-ink-1) 40%, transparent);
+  pointer-events: none;
+}
+
 .control {
   display: flex;
   flex-direction: column;

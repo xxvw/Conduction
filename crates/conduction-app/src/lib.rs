@@ -37,6 +37,8 @@ pub fn run() {
             commands::import_track,
             commands::list_tracks,
             commands::delete_track,
+            commands::analyze_track,
+            commands::get_waveform,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

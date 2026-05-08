@@ -1,11 +1,15 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import "./App.css";
+import { WaveformView } from "@/components/waveform/WaveformView";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
+import { useTracks } from "@/hooks/useTracks";
+import { useWaveform } from "@/hooks/useWaveform";
 import { ipc } from "@/lib/ipc";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import type { DeckId, DeckSnapshot, MixerSnapshot } from "@/types/mixer";
+import type { TrackSummary } from "@/types/track";
 
 type Screen = "mix" | "library";
 
@@ -14,6 +18,13 @@ const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 export function App() {
   const [screen, setScreen] = useState<Screen>("mix");
   const status = useMixerStatus(100);
+  const tracksHandle = useTracks();
+
+  const trackByPath = useMemo(() => {
+    const m = new Map<string, TrackSummary>();
+    for (const t of tracksHandle.tracks) m.set(t.path, t);
+    return m;
+  }, [tracksHandle.tracks]);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -46,21 +57,33 @@ export function App() {
 
       <main className={screen === "mix" ? "main main-mix" : "main main-library"}>
         {screen === "mix" ? (
-          <MixScreen status={status} />
+          <MixScreen status={status} trackByPath={trackByPath} />
         ) : (
-          <LibraryScreen onLoadToDeck={handleLoadToDeck} />
+          <LibraryScreen
+            tracks={tracksHandle.tracks}
+            loading={tracksHandle.loading}
+            error={tracksHandle.error}
+            refresh={tracksHandle.refresh}
+            onLoadToDeck={handleLoadToDeck}
+          />
         )}
       </main>
     </div>
   );
 }
 
-function MixScreen({ status }: { status: MixerSnapshot | null }) {
+function MixScreen({
+  status,
+  trackByPath,
+}: {
+  status: MixerSnapshot | null;
+  trackByPath: Map<string, TrackSummary>;
+}) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
     <>
-      <DeckPanel snapshot={status.deck_a} />
-      <DeckPanel snapshot={status.deck_b} />
+      <DeckPanel snapshot={status.deck_a} trackByPath={trackByPath} />
+      <DeckPanel snapshot={status.deck_b} trackByPath={trackByPath} />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
   );
@@ -83,8 +106,18 @@ function MasterSlim({ volume }: { volume: number }) {
   );
 }
 
-function DeckPanel({ snapshot }: { snapshot: DeckSnapshot }) {
+function DeckPanel({
+  snapshot,
+  trackByPath,
+}: {
+  snapshot: DeckSnapshot;
+  trackByPath: Map<string, TrackSummary>;
+}) {
   const deck: DeckId = snapshot.id;
+  const loadedTrack = snapshot.loaded_path
+    ? trackByPath.get(snapshot.loaded_path) ?? null
+    : null;
+  const waveform = useWaveform(loadedTrack?.id ?? null);
 
   const handleLoad = useCallback(async () => {
     const path = await open({
@@ -110,6 +143,10 @@ function DeckPanel({ snapshot }: { snapshot: DeckSnapshot }) {
 
   const canPlay = snapshot.loaded_path !== null;
   const filename = snapshot.loaded_path?.split("/").pop() ?? "";
+  const positionRatio =
+    snapshot.duration_sec && snapshot.duration_sec > 0
+      ? snapshot.position_sec / snapshot.duration_sec
+      : 0;
 
   return (
     <section className="deck">
@@ -127,13 +164,20 @@ function DeckPanel({ snapshot }: { snapshot: DeckSnapshot }) {
         <div className="deck-file">
           {snapshot.loaded_path ? (
             <>
-              <div>{filename}</div>
-              <em>{snapshot.loaded_path}</em>
+              <div>{loadedTrack?.title || filename}</div>
+              <em>{loadedTrack?.artist || snapshot.loaded_path}</em>
             </>
           ) : (
             <em>no track loaded</em>
           )}
         </div>
+      </div>
+
+      <div className="deck-waveform" data-id={deck}>
+        <WaveformView waveform={waveform} positionRatio={positionRatio} height={88} />
+        {snapshot.loaded_path && !waveform && (
+          <span className="waveform-hint">analyzing…</span>
+        )}
       </div>
 
       <div className="deck-transport">
