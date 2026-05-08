@@ -762,9 +762,9 @@ async fn yt_download(
     let format = youtube::parse_format(&body.format).map_err(ApiError::bad_request)?;
     let library = s.library.clone();
     let url = body.url.clone();
-    // 同期 spawn (yt-dlp が blocking) を tokio から逃がす。
+    // 同期 spawn (yt-dlp が blocking) を tokio から逃がす。HTTP API では進捗 stream は無し。
     let track = tokio::task::spawn_blocking(move || {
-        youtube::download_and_import(&library, &url, format)
+        youtube::download_and_import(&library, &url, format, |_| {})
     })
     .await
     .map_err(|e| ApiError::internal(e.to_string()))?

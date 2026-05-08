@@ -139,10 +139,23 @@ export const ipc = {
   ytSearch(query: string, limit: number) {
     return call<VideoSearchResult[]>("yt_search", { query, limit });
   },
-  ytDownload(url: string, format: AudioFormat) {
-    return call<TrackSummary>("yt_download", { url, format });
+  ytDownload(url: string, format: AudioFormat, requestId: string) {
+    return call<TrackSummary>("yt_download", { url, format, requestId });
   },
 };
+
+export interface YtProgressEvent {
+  request_id: string;
+  raw: string;
+  percent: number | null;
+  eta_sec: number | null;
+  stage: "download" | "postprocess" | "other";
+}
+
+export interface YtDoneEvent {
+  request_id: string;
+  ok: boolean;
+}
 
 export type AudioFormat = "m4a" | "mp3" | "opus" | "wav" | "flac";
 

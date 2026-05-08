@@ -11,7 +11,7 @@ use conduction_analysis::{
     decode_to_pcm, estimate_beatgrid, generate_waveform, DEFAULT_WAVEFORM_BINS,
 };
 use conduction_core::TrackId;
-use conduction_download::{search as yt_search, AudioFormat, VideoSearchResult};
+use conduction_download::{search as yt_search, AudioFormat, ProgressEvent, VideoSearchResult};
 use conduction_library::{build_track_from_file, Library};
 use directories::ProjectDirs;
 use parking_lot::Mutex;
@@ -39,15 +39,21 @@ pub fn download_dir() -> Result<PathBuf, String> {
 }
 
 /// URL を音声でダウンロードして Library に登録、解析をバックグラウンド起動する。
-/// 成功時は登録済の `TrackSummary` を返す。
-pub fn download_and_import(
+/// 成功時は登録済の `TrackSummary` を返す。`on_progress` は yt-dlp の進捗
+/// コールバック (UI への emit などに使う)。
+pub fn download_and_import<F>(
     library: &LibraryHandle,
     url: &str,
     format: AudioFormat,
-) -> Result<TrackSummary, String> {
+    on_progress: F,
+) -> Result<TrackSummary, String>
+where
+    F: FnMut(&ProgressEvent),
+{
     let dir = download_dir()?;
     info!(url, format = format.as_str(), dir = %dir.display(), "yt download starting");
-    let path = conduction_download::download(url, format, &dir).map_err(|e| e.to_string())?;
+    let path = conduction_download::download(url, format, &dir, on_progress)
+        .map_err(|e| e.to_string())?;
     info!(path = %path.display(), "yt download completed");
 
     let track = build_track_from_file(&path).map_err(|e| e.to_string())?;

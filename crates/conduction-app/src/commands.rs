@@ -12,7 +12,7 @@ use serde::Serialize;
 use conduction_core::TrackId;
 use conduction_library::{build_track_from_file, Library};
 use parking_lot::Mutex;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -531,10 +531,33 @@ pub fn yt_search(
 
 #[tauri::command]
 pub fn yt_download(
+    app: AppHandle,
     library: State<'_, LibraryHandle>,
     url: String,
     format: String,
+    request_id: String,
 ) -> Result<TrackSummary, String> {
     let format = crate::youtube::parse_format(&format)?;
-    crate::youtube::download_and_import(&library, &url, format)
+    let app_for_emit = app.clone();
+    let req_for_emit = request_id.clone();
+    let result = crate::youtube::download_and_import(&library, &url, format, move |ev| {
+        let _ = app_for_emit.emit(
+            "yt:progress",
+            serde_json::json!({
+                "request_id": req_for_emit,
+                "raw": ev.raw,
+                "percent": ev.percent,
+                "eta_sec": ev.eta_sec,
+                "stage": ev.stage,
+            }),
+        );
+    });
+    let _ = app.emit(
+        "yt:done",
+        serde_json::json!({
+            "request_id": request_id,
+            "ok": result.is_ok(),
+        }),
+    );
+    result
 }

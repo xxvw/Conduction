@@ -1,6 +1,12 @@
-import { useEffect, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ipc, type AudioFormat, type VideoSearchResult } from "@/lib/ipc";
+import {
+  ipc,
+  type AudioFormat,
+  type VideoSearchResult,
+  type YtProgressEvent,
+} from "@/lib/ipc";
 
 const FORMATS: AudioFormat[] = ["m4a", "mp3", "opus", "wav", "flac"];
 
@@ -10,6 +16,15 @@ interface YouTubeScreenProps {
 
 type AvailabilityState = "checking" | "ready" | "missing";
 
+interface DownloadState {
+  /** 0..100 */
+  percent: number;
+  stage: "download" | "postprocess" | "other";
+  message: string;
+  done: boolean;
+  error: string | null;
+}
+
 export function YouTubeScreen({ onImported }: YouTubeScreenProps) {
   const [availability, setAvailability] = useState<AvailabilityState>("checking");
   const [query, setQuery] = useState("");
@@ -17,8 +32,52 @@ export function YouTubeScreen({ onImported }: YouTubeScreenProps) {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [format, setFormat] = useState<AudioFormat>("m4a");
-  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
-  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<Record<string, DownloadState>>({});
+  const requestIdToVideoId = useRef<Map<string, string>>(new Map());
+
+  // yt:progress / yt:done を listen して、対応する video の進捗を更新。
+  useEffect(() => {
+    let unlistenProgress: UnlistenFn | undefined;
+    let unlistenDone: UnlistenFn | undefined;
+    void listen<YtProgressEvent>("yt:progress", (e) => {
+      const videoId = requestIdToVideoId.current.get(e.payload.request_id);
+      if (!videoId) return;
+      setDownloads((prev) => {
+        const cur = prev[videoId] ?? makeInitialState();
+        return {
+          ...prev,
+          [videoId]: {
+            ...cur,
+            percent:
+              e.payload.percent != null && Number.isFinite(e.payload.percent)
+                ? e.payload.percent
+                : cur.percent,
+            stage: e.payload.stage,
+            message: e.payload.raw,
+          },
+        };
+      });
+    }).then((fn) => {
+      unlistenProgress = fn;
+    });
+    void listen<{ request_id: string; ok: boolean }>("yt:done", (e) => {
+      const videoId = requestIdToVideoId.current.get(e.payload.request_id);
+      if (!videoId) return;
+      setDownloads((prev) => {
+        const cur = prev[videoId] ?? makeInitialState();
+        return {
+          ...prev,
+          [videoId]: { ...cur, done: true, percent: e.payload.ok ? 100 : cur.percent },
+        };
+      });
+    }).then((fn) => {
+      unlistenDone = fn;
+    });
+    return () => {
+      unlistenProgress?.();
+      unlistenDone?.();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,18 +112,35 @@ export function YouTubeScreen({ onImported }: YouTubeScreenProps) {
   }
 
   async function handleDownload(item: VideoSearchResult) {
-    setDownloading((d) => ({ ...d, [item.id]: true }));
-    setDownloadMessage(`Downloading "${item.title}"…`);
+    const requestId =
+      (typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    requestIdToVideoId.current.set(requestId, item.id);
+    setDownloads((prev) => ({ ...prev, [item.id]: makeInitialState() }));
     try {
-      const summary = await ipc.ytDownload(item.url, format);
-      setDownloadMessage(`Imported: ${summary.title || summary.path}`);
+      await ipc.ytDownload(item.url, format, requestId);
+      setDownloads((prev) => ({
+        ...prev,
+        [item.id]: { ...(prev[item.id] ?? makeInitialState()), done: true, percent: 100 },
+      }));
       onImported();
     } catch (e) {
-      setDownloadMessage(`Download failed: ${e}`);
+      setDownloads((prev) => ({
+        ...prev,
+        [item.id]: {
+          ...(prev[item.id] ?? makeInitialState()),
+          done: true,
+          error: String(e),
+        },
+      }));
     } finally {
-      setDownloading((d) => ({ ...d, [item.id]: false }));
+      requestIdToVideoId.current.delete(requestId);
     }
   }
+
+  // サムネイルは検索結果が来たあと 1 件ずつ順番に解放する。
+  const revealedThumbs = useStaggeredReveal(results.length, results.map((r) => r.id).join("|"));
 
   if (availability === "checking") {
     return (
@@ -126,34 +202,17 @@ export function YouTubeScreen({ onImported }: YouTubeScreenProps) {
       </form>
 
       {searchError && <p className="youtube-error">{searchError}</p>}
-      {downloadMessage && <p className="youtube-message">{downloadMessage}</p>}
 
       <div className="youtube-results">
-        {results.map((r) => (
-          <article key={r.id} className="youtube-card">
-            {r.thumbnail ? (
-              <img className="youtube-thumb" src={r.thumbnail} alt="" loading="lazy" />
-            ) : (
-              <div className="youtube-thumb youtube-thumb-placeholder" />
-            )}
-            <div className="youtube-meta">
-              <a className="youtube-title" href={r.url} target="_blank" rel="noreferrer">
-                {r.title}
-              </a>
-              <div className="youtube-sub">
-                <span>{r.channel || "—"}</span>
-                {r.duration_sec != null && <span>{formatDuration(r.duration_sec)}</span>}
-                {r.view_count != null && <span>{formatViews(r.view_count)} views</span>}
-              </div>
-            </div>
-            <button
-              className="btn"
-              disabled={!!downloading[r.id]}
-              onClick={() => void handleDownload(r)}
-            >
-              {downloading[r.id] ? "Downloading…" : `Download ${format}`}
-            </button>
-          </article>
+        {results.map((r, idx) => (
+          <ResultCard
+            key={r.id}
+            item={r}
+            showThumb={revealedThumbs > idx}
+            format={format}
+            download={downloads[r.id]}
+            onDownload={() => void handleDownload(r)}
+          />
         ))}
         {!searching && results.length === 0 && (
           <p className="hint">検索ワードを入力してください。例: "lo-fi hip hop", "deep house mix"</p>
@@ -161,6 +220,108 @@ export function YouTubeScreen({ onImported }: YouTubeScreenProps) {
       </div>
     </section>
   );
+}
+
+function ResultCard({
+  item,
+  showThumb,
+  format,
+  download,
+  onDownload,
+}: {
+  item: VideoSearchResult;
+  showThumb: boolean;
+  format: AudioFormat;
+  download: DownloadState | undefined;
+  onDownload: () => void;
+}) {
+  const inProgress = download != null && !download.done;
+  const isDone = download?.done && !download.error;
+  const isError = !!download?.error;
+
+  const buttonLabel = useMemo(() => {
+    if (isError) return "Retry";
+    if (isDone) return "Imported ✓";
+    if (inProgress) {
+      const p = Math.max(0, Math.min(100, download?.percent ?? 0));
+      const stageLabel =
+        download?.stage === "postprocess" ? "Post" : download?.stage === "download" ? "DL" : "…";
+      return `${stageLabel} ${p.toFixed(0)}%`;
+    }
+    return `Download ${format}`;
+  }, [isError, isDone, inProgress, download, format]);
+
+  return (
+    <article className="youtube-card">
+      {showThumb && item.thumbnail ? (
+        <img className="youtube-thumb" src={item.thumbnail} alt="" />
+      ) : (
+        <div className="youtube-thumb youtube-thumb-placeholder" />
+      )}
+      <div className="youtube-meta">
+        <a className="youtube-title" href={item.url} target="_blank" rel="noreferrer">
+          {item.title}
+        </a>
+        <div className="youtube-sub">
+          <span>{item.channel || "—"}</span>
+          {item.duration_sec != null && <span>{formatDuration(item.duration_sec)}</span>}
+          {item.view_count != null && <span>{formatViews(item.view_count)} views</span>}
+        </div>
+        {download && (inProgress || isError) && (
+          <div className="youtube-progress">
+            <div className="youtube-progress-bar">
+              <div
+                className="youtube-progress-fill"
+                data-stage={download.stage}
+                style={{ width: `${Math.max(0, Math.min(100, download.percent))}%` }}
+              />
+            </div>
+            <span className="youtube-progress-msg">
+              {isError ? download.error : (download.message || "starting…")}
+            </span>
+          </div>
+        )}
+      </div>
+      <button
+        className="btn"
+        disabled={inProgress || isDone}
+        onClick={onDownload}
+      >
+        {buttonLabel}
+      </button>
+    </article>
+  );
+}
+
+function useStaggeredReveal(total: number, key: string): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    setCount(0);
+    if (total === 0) return;
+    let cancelled = false;
+    let i = 0;
+    const tick = () => {
+      if (cancelled) return;
+      i += 1;
+      setCount(i);
+      if (i < total) {
+        // 約 60fps で 1 件ずつ出す。サムネのデコードは Image 任せでも、
+        // DOM への投入を間引くだけで初期描画が一気に詰まらない。
+        setTimeout(tick, 50);
+      }
+    };
+    setTimeout(tick, 16);
+    return () => {
+      cancelled = true;
+    };
+    // key は results の id 連結なので、内容が変わった時だけ再開。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, total]);
+  return count;
+}
+
+function makeInitialState(): DownloadState {
+  return { percent: 0, stage: "other", message: "", done: false, error: null };
 }
 
 function formatDuration(sec: number): string {

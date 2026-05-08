@@ -1364,3 +1364,35 @@ input[type="range"] {
   flex-direction: column;
   gap: var(--s-3);
 }
+.youtube-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.youtube-progress-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--c-ink-3);
+  overflow: hidden;
+}
+.youtube-progress-fill {
+  height: 100%;
+  background: var(--c-accent);
+  transition: width 120ms linear;
+}
+.youtube-progress-fill[data-stage="postprocess"] {
+  background: var(--c-success, #4ade80);
+}
+.youtube-progress-fill[data-stage="other"] {
+  background: var(--c-ink-9);
+}
+.youtube-progress-msg {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--c-ink-9);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
