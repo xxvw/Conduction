@@ -30,6 +30,11 @@ impl LibraryHandle {
         let mut guard = self.inner.lock();
         f(&mut guard)
     }
+
+    /// バックグラウンドスレッドで使うために `Arc` を複製する。
+    pub fn shared(&self) -> Arc<Mutex<Library>> {
+        self.inner.clone()
+    }
 }
 
 /// UI に返すトラック要約。Key は Camelot 文字列（"8A" など）に整形済み。

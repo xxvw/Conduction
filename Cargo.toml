@@ -76,3 +76,31 @@ strip = "debuginfo"
 
 [profile.dev]
 opt-level = 1
+
+# 解析・デコード・DB は dev でも release レベルで最適化する。
+# debug build では biquad の per-sample 処理が極端に遅いため、これを入れないと
+# 波形生成が秒単位で遅延する。
+[profile.dev.package.conduction-analysis]
+opt-level = 3
+[profile.dev.package.symphonia]
+opt-level = 3
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3
+[profile.dev.package.symphonia-bundle-flac]
+opt-level = 3
+[profile.dev.package.symphonia-codec-vorbis]
+opt-level = 3
+[profile.dev.package.symphonia-codec-aac]
+opt-level = 3
+[profile.dev.package.symphonia-format-isomp4]
+opt-level = 3
+[profile.dev.package.symphonia-format-ogg]
+opt-level = 3
+[profile.dev.package.biquad]
+opt-level = 3
+[profile.dev.package.rubato]
+opt-level = 3
+[profile.dev.package.rustfft]
+opt-level = 3
+[profile.dev.package.rusqlite]
+opt-level = 3

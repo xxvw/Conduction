@@ -1,12 +1,14 @@
 //! Tauri command handlers. UI から呼ばれるエンドポイント。
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use conduction_analysis::{decode_to_pcm, generate_waveform, WaveformPreview, DEFAULT_WAVEFORM_BINS};
 use conduction_core::TrackId;
-use conduction_library::build_track_from_file;
+use conduction_library::{build_track_from_file, Library};
+use parking_lot::Mutex;
 use tauri::State;
-use tracing::warn;
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
@@ -122,21 +124,27 @@ pub fn import_track(
         Ok(stored)
     })?;
 
-    // 既存の波形が無ければ自動生成。失敗してもインポート自体は成功扱いにする。
+    // 既存の波形が無ければバックグラウンドで生成。UI には即座に return。
     let needs_waveform = library
         .with_library(|lib| lib.load_waveform(stored.id).map(|w| w.is_none()))
         .unwrap_or(true);
     if needs_waveform {
-        if let Err(e) = analyze_and_save(&library, stored.id, &stored.path) {
-            warn!(error = %e, path = %stored.path.display(), "auto analyze failed");
-        }
+        let lib_shared = library.shared();
+        let track_id = stored.id;
+        let analyze_path = stored.path.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            match analyze_and_save_internal(&lib_shared, track_id, &analyze_path) {
+                Ok(_) => info!(path = %analyze_path.display(), "background analyze completed"),
+                Err(e) => warn!(error = %e, path = %analyze_path.display(), "background analyze failed"),
+            }
+        });
     }
 
     Ok(TrackSummary::from_track(&stored))
 }
 
 #[tauri::command]
-pub fn analyze_track(
+pub async fn analyze_track(
     library: State<'_, LibraryHandle>,
     id: String,
 ) -> Result<WaveformPreview, String> {
@@ -151,7 +159,13 @@ pub fn analyze_track(
         Ok(t.path)
     })?;
 
-    analyze_and_save(&library, track_id, &path)
+    // 同期的だが、blocking スレッドで走らせて UI を止めない。
+    let lib_shared = library.shared();
+    tauri::async_runtime::spawn_blocking(move || {
+        analyze_and_save_internal(&lib_shared, track_id, &path)
+    })
+    .await
+    .map_err(|e| format!("analyze task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -166,16 +180,15 @@ pub fn get_waveform(
     })
 }
 
-fn analyze_and_save(
-    library: &LibraryHandle,
+fn analyze_and_save_internal(
+    library: &Arc<Mutex<Library>>,
     track_id: TrackId,
     path: &Path,
 ) -> Result<WaveformPreview, String> {
     let audio = decode_to_pcm(path).map_err(|e| e.to_string())?;
     let wf = generate_waveform(&audio, DEFAULT_WAVEFORM_BINS);
-    library.with_library(|lib| {
-        lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())
-    })?;
+    let lib = library.lock();
+    lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())?;
     Ok(wf)
 }
 
