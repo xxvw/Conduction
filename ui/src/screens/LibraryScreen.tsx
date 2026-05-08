@@ -69,6 +69,22 @@ export function LibraryScreen({
     [refresh],
   );
 
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const handleAnalyze = useCallback(
+    async (id: string) => {
+      setAnalyzingId(id);
+      try {
+        await ipc.analyzeTrack(id);
+        await refresh();
+      } catch (e) {
+        console.error("analyze failed:", id, e);
+      } finally {
+        setAnalyzingId(null);
+      }
+    },
+    [refresh],
+  );
+
   return (
     <section className="library">
       <div className="library-toolbar">
@@ -122,6 +138,14 @@ export function LibraryScreen({
                   <StatusBadge track={t} />
                 </td>
                 <td className="actions">
+                  <button
+                    className="chip"
+                    onClick={() => handleAnalyze(t.id)}
+                    disabled={analyzingId === t.id}
+                    title="Re-analyze (regenerate waveform)"
+                  >
+                    {analyzingId === t.id ? "…" : "↻"}
+                  </button>
                   <button
                     className="chip"
                     onClick={() => onLoadToDeck("A", t.path)}

@@ -113,6 +113,7 @@ pub fn import_track(
     library: State<'_, LibraryHandle>,
     path: String,
 ) -> Result<TrackSummary, String> {
+    info!(path = %path, "import_track invoked");
     let path_buf = PathBuf::from(&path);
     let track = build_track_from_file(&path_buf).map_err(|e| e.to_string())?;
     let stored = library.with_library(|lib| -> Result<_, String> {
@@ -125,11 +126,15 @@ pub fn import_track(
     })?;
 
     // 既存の波形が無ければバックグラウンドで生成。UI には即座に return。
-    // tauri::async_runtime::spawn_blocking は環境によって即時に走らないことがあるため、
-    // 確実な std::thread::spawn を使う。
     let needs_waveform = library
         .with_library(|lib| lib.load_waveform(stored.id).map(|w| w.is_none()))
         .unwrap_or(true);
+    info!(
+        track_id = %stored.id,
+        path = %stored.path.display(),
+        needs_waveform,
+        "import_track stored"
+    );
     if needs_waveform {
         let lib_shared = library.shared();
         let track_id = stored.id;

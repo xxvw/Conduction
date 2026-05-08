@@ -45,7 +45,10 @@ pub fn run() {
 }
 
 fn init_tracing() {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,conduction=debug"));
-    let _ = fmt().with_env_filter(filter).with_target(false).try_init();
+    // RUST_LOG が未指定なら、conduction* は debug、それ以外は info を出す。
+    // 例: RUST_LOG=trace conduction で全部見る。
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        EnvFilter::new("info,conduction_app=debug,conduction_analysis=debug,conduction_library=debug")
+    });
+    let _ = fmt().with_env_filter(filter).with_target(true).try_init();
 }
