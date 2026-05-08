@@ -155,10 +155,21 @@ function DeckPanel({
           <div className="deck-label" data-id={deck}>
             DECK {deck}
           </div>
-          <div style={{ marginTop: "var(--s-2)" }}>
+          <div className="deck-status-row">
             <span className="state-badge" data-state={snapshot.state}>
               {snapshot.state}
             </span>
+            {loadedTrack && !waveform && (
+              <span
+                className="analyzing-bar"
+                role="progressbar"
+                aria-label="analyzing waveform"
+                title="analyzing waveform"
+              >
+                <span className="analyzing-bar-track" />
+                <span className="analyzing-bar-label">ANALYZING</span>
+              </span>
+            )}
           </div>
         </div>
         <div className="deck-file">
@@ -175,9 +186,6 @@ function DeckPanel({
 
       <div className="deck-waveform" data-id={deck}>
         <WaveformView waveform={waveform} positionRatio={positionRatio} height={88} />
-        {snapshot.loaded_path && !waveform && (
-          <span className="waveform-hint">analyzing…</span>
-        )}
       </div>
 
       <div className="deck-transport">

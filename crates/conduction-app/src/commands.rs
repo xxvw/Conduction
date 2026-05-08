@@ -125,6 +125,8 @@ pub fn import_track(
     })?;
 
     // 既存の波形が無ければバックグラウンドで生成。UI には即座に return。
+    // tauri::async_runtime::spawn_blocking は環境によって即時に走らないことがあるため、
+    // 確実な std::thread::spawn を使う。
     let needs_waveform = library
         .with_library(|lib| lib.load_waveform(stored.id).map(|w| w.is_none()))
         .unwrap_or(true);
@@ -132,19 +134,31 @@ pub fn import_track(
         let lib_shared = library.shared();
         let track_id = stored.id;
         let analyze_path = stored.path.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            match analyze_and_save_internal(&lib_shared, track_id, &analyze_path) {
-                Ok(_) => info!(path = %analyze_path.display(), "background analyze completed"),
-                Err(e) => warn!(error = %e, path = %analyze_path.display(), "background analyze failed"),
-            }
-        });
+        let _ = std::thread::Builder::new()
+            .name("analyze-import".into())
+            .spawn(move || {
+                info!(path = %analyze_path.display(), "background analyze starting");
+                let started = std::time::Instant::now();
+                match analyze_and_save_internal(&lib_shared, track_id, &analyze_path) {
+                    Ok(_) => info!(
+                        path = %analyze_path.display(),
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "background analyze completed"
+                    ),
+                    Err(e) => warn!(
+                        error = %e,
+                        path = %analyze_path.display(),
+                        "background analyze failed"
+                    ),
+                }
+            });
     }
 
     Ok(TrackSummary::from_track(&stored))
 }
 
 #[tauri::command]
-pub async fn analyze_track(
+pub fn analyze_track(
     library: State<'_, LibraryHandle>,
     id: String,
 ) -> Result<WaveformPreview, String> {
@@ -159,13 +173,11 @@ pub async fn analyze_track(
         Ok(t.path)
     })?;
 
-    // 同期的だが、blocking スレッドで走らせて UI を止めない。
-    let lib_shared = library.shared();
-    tauri::async_runtime::spawn_blocking(move || {
-        analyze_and_save_internal(&lib_shared, track_id, &path)
-    })
-    .await
-    .map_err(|e| format!("analyze task join error: {e}"))?
+    info!(path = %path.display(), "analyze_track starting");
+    let started = std::time::Instant::now();
+    let result = analyze_and_save_internal(&library.shared(), track_id, &path);
+    info!(elapsed_ms = started.elapsed().as_millis() as u64, ok = result.is_ok(), "analyze_track finished");
+    result
 }
 
 #[tauri::command]
