@@ -49,17 +49,18 @@ pub fn score(query: &MatchQuery, cue: &Cue, _track: &Track) -> Option<MatchScore
     }
     let bpm_score = (1.0 - bpm_diff / query.max_bpm_diff).clamp(0.0, 1.0);
 
-    // Camelot 互換
-    let key_score = if !query.key.is_compatible(cue.key_at_cue) {
-        return None;
-    } else if query.key == cue.key_at_cue {
+    // Camelot 互換は **除外フィルタにせず、スコアにのみ反映** する。
+    // 互換外でも候補に残し、一致率を低めにつけることで「BPM が近ければ提案する」挙動にする。
+    let key_score = if query.key == cue.key_at_cue {
         1.0
-    } else if query.key.camelot_number == cue.key_at_cue.camelot_number {
-        // 平行調 (B↔A 同番号) は強い互換
-        0.85
+    } else if query.key.is_compatible(cue.key_at_cue) {
+        if query.key.camelot_number == cue.key_at_cue.camelot_number {
+            0.85 // 平行調 (B↔A 同番号)
+        } else {
+            0.7 // 隣接キー (同モード ±1)
+        }
     } else {
-        // 隣接キー
-        0.7
+        0.3 // 互換外でも残す
     };
 
     // Energy 互換
@@ -171,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_incompatible_key() {
+    fn keeps_incompatible_key_with_low_score() {
         let track = Track::placeholder("/tmp/x".into(), Key::new(8, KeyMode::Minor).unwrap());
         let cue = make_cue(
             track.id,
@@ -181,7 +182,40 @@ mod tests {
             &[MixRole::Entry],
         );
         let q = MatchQuery::new(128.0, Key::new(8, KeyMode::Minor).unwrap(), 0.5);
-        assert!(score(&q, &cue, &track).is_none());
+        let s = score(&q, &cue, &track).expect("incompatible-key cues are still ranked");
+        assert!(
+            s.key_score < 0.5,
+            "incompatible key should score low, got {}",
+            s.key_score
+        );
+    }
+
+    #[test]
+    fn ranks_compatible_key_higher_than_incompatible() {
+        let track = Track::placeholder("/tmp/x".into(), Key::new(8, KeyMode::Minor).unwrap());
+        let same_key = make_cue(
+            track.id,
+            128.0,
+            Key::new(8, KeyMode::Minor).unwrap(),
+            0.5,
+            &[MixRole::Entry],
+        );
+        let far_key = make_cue(
+            track.id,
+            128.0,
+            Key::new(2, KeyMode::Minor).unwrap(),
+            0.5,
+            &[MixRole::Entry],
+        );
+        let pool = vec![
+            (far_key.clone(), track.clone()),
+            (same_key.clone(), track.clone()),
+        ];
+        let q = MatchQuery::new(128.0, Key::new(8, KeyMode::Minor).unwrap(), 0.5);
+        let cands = find_candidates(&q, &pool, 10);
+        assert_eq!(cands.len(), 2);
+        assert_eq!(cands[0].cue.id, same_key.id, "exact key should rank first");
+        assert_eq!(cands[1].cue.id, far_key.id);
     }
 
     #[test]

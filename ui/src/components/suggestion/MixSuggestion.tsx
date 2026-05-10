@@ -47,7 +47,7 @@ export function MixSuggestion({
             <p className="mix-suggestion-empty-sub">
               Active: <code>{activeStatus.bpm.toFixed(1)} BPM</code> ·{" "}
               <code>{activeStatus.key || "—"}</code> · need an Entry-role cue
-              within ±8 BPM and Camelot-compatible.
+              within ±8 BPM (key only affects ranking).
             </p>
           )}
         </div>
