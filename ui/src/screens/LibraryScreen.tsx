@@ -76,6 +76,22 @@ export function LibraryScreen({
     | { state: "error"; error: string }
   >({ state: "idle" });
 
+  const [demoCueResult, setDemoCueResult] = useState<string | null>(null);
+  const handleInjectDemoCues = useCallback(async () => {
+    setDemoCueResult("Injecting…");
+    try {
+      const n = await ipc.injectDemoCues();
+      setDemoCueResult(
+        n === 0
+          ? "All tracks already have a DROP/Entry cue."
+          : `Inserted ${n} demo DROP cue${n === 1 ? "" : "s"} (Entry, 32b).`,
+      );
+      await refresh();
+    } catch (e) {
+      setDemoCueResult(`Failed: ${e}`);
+    }
+  }, [refresh]);
+
   const handleExportPreview = useCallback(async () => {
     const dest = await open({ directory: true, multiple: false });
     if (!dest || Array.isArray(dest)) return;
@@ -122,6 +138,14 @@ export function LibraryScreen({
         </button>
         <button
           className="btn"
+          onClick={handleInjectDemoCues}
+          disabled={tracks.length === 0}
+          title="Insert one DROP @ 32-beat Entry cue per track (dev / test only)"
+        >
+          + Demo Cues
+        </button>
+        <button
+          className="btn"
           onClick={handleExportPreview}
           disabled={exportInfo.state === "previewing" || tracks.length === 0}
           title="Preview a rekordbox-compatible USB export (Phase 1: dry-run only)"
@@ -135,6 +159,11 @@ export function LibraryScreen({
       </div>
 
       {error && <p className="hint" style={{ color: "var(--c-danger)" }}>{error}</p>}
+      {demoCueResult && (
+        <p className="hint" style={{ color: "var(--c-ink-9)" }}>
+          {demoCueResult}
+        </p>
+      )}
 
       {exportInfo.state === "preview" && (
         <div className="export-preview">

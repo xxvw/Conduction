@@ -1,6 +1,13 @@
 import React, { useEffect, useRef } from "react";
 
+import type { CueTypeId } from "@/lib/ipc";
 import type { WaveformPreview } from "@/types/waveform";
+
+export interface TypedCueMarker {
+  type: CueTypeId;
+  ratio: number;
+  label: string;
+}
 
 interface WaveformViewProps {
   waveform: WaveformPreview | null;
@@ -10,6 +17,8 @@ interface WaveformViewProps {
   downbeatRatios?: number[];
   /** Hot Cue を比率 (0..1) で重ねる。 */
   hotCueRatios?: { slot: number; ratio: number }[];
+  /** タイプ付き Cue (Drop / Intro / Breakdown / ...) を比率で重ねる。 */
+  cueMarkers?: TypedCueMarker[];
   /** ループ範囲を比率で重ねる。endRatio が null の場合は IN マーカーだけ表示。 */
   loopRangeRatio?: { startRatio: number; endRatio: number | null; active: boolean } | null;
   /** クリック時、その x 位置の比率（0..1）が渡される。 */
@@ -43,6 +52,7 @@ export function WaveformView({
   positionRatio,
   downbeatRatios,
   hotCueRatios,
+  cueMarkers,
   loopRangeRatio,
   onSeekRatio,
   height = 80,
@@ -87,9 +97,12 @@ export function WaveformView({
     if (hotCueRatios && hotCueRatios.length > 0) {
       drawHotCues(ctx, hotCueRatios, cssW, height);
     }
+    if (cueMarkers && cueMarkers.length > 0) {
+      drawTypedCues(ctx, cueMarkers, cssW, height);
+    }
 
     drawCursor(ctx, positionRatio, cssW, height);
-  }, [waveform, positionRatio, downbeatRatios, hotCueRatios, loopRangeRatio, height]);
+  }, [waveform, positionRatio, downbeatRatios, hotCueRatios, cueMarkers, loopRangeRatio, height]);
 
   return (
     <canvas
@@ -206,6 +219,59 @@ function drawHotCues(
     // 下端のtick
     ctx.fillStyle = color;
     ctx.fillRect(x - 1, height - 4, 3, 4);
+  }
+}
+
+/** タイプ付き Cue (Drop / Intro / Breakdown 等) を波形下端に色付きフラグ + 縦線で描画。 */
+function drawTypedCues(
+  ctx: CanvasRenderingContext2D,
+  cues: TypedCueMarker[],
+  width: number,
+  height: number,
+) {
+  for (const c of cues) {
+    if (c.ratio < 0 || c.ratio > 1) continue;
+    const x = Math.round(c.ratio * width);
+    const color = typedCueColor(c.type);
+
+    // 縦線 (波形全体を貫く)
+    ctx.strokeStyle = `${color}80`; // 50% alpha
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, height);
+    ctx.stroke();
+
+    // 下端のラベルフラグ
+    const flagH = 11;
+    const flagW = Math.max(22, c.label.length * 6 + 4);
+    const fy = height - flagH;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, fy, flagW, flagH);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.font = "bold 8px JetBrains Mono, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(c.label, x + 2, fy + flagH / 2 + 0.5);
+  }
+}
+
+function typedCueColor(t: CueTypeId): string {
+  switch (t) {
+    case "drop":
+      return "#E8B868"; // gold
+    case "intro_start":
+    case "intro_end":
+      return "#4FE3B2"; // mint
+    case "breakdown":
+      return "#A089DC"; // violet
+    case "outro":
+      return "#B0B0C0"; // gray
+    case "hot_cue":
+    case "custom_hot_cue":
+      return "#E8915A"; // amber
+    default:
+      return "#E8915A";
   }
 }
 

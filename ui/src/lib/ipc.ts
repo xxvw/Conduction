@@ -147,6 +147,9 @@ export const ipc = {
   listMatchCandidates(args: MatchQueryArgs) {
     return call<MatchCandidate[]>("list_match_candidates", { args });
   },
+  injectDemoCues() {
+    return call<number>("inject_demo_cues");
+  },
 
   // --- USB Export (rekordbox-compatible) ---
   exportPreview(destination: string) {

@@ -698,6 +698,37 @@ pub fn delete_cue(
     library.with_library(|lib| lib.delete_cue(id).map_err(|e| e.to_string()))
 }
 
+/// 開発・動作確認用: ライブラリ全 track にダミーの Drop @ Entry を 1 つずつ挿入する。
+///
+/// - 既に `Drop @ Entry` を持つ track はスキップ。
+/// - 位置: 32 拍目 (= 約 1 小節 + 16 拍目あたりの典型的な Drop 位置)。
+/// - 戻り値は新規挿入された Cue の数。
+#[tauri::command]
+pub fn inject_demo_cues(library: State<'_, LibraryHandle>) -> Result<usize, String> {
+    let tracks = library
+        .with_library(|lib| lib.list_tracks().map_err(|e| e.to_string()))?;
+    let mut inserted = 0usize;
+    for track in tracks {
+        if track.bpm <= 0.0 {
+            continue;
+        }
+        let existing = library
+            .with_library(|lib| lib.list_cues_for_track(track.id).map_err(|e| e.to_string()))?;
+        let already = existing
+            .iter()
+            .any(|c| c.cue_type == CueType::Drop && c.can_be(MixRole::Entry));
+        if already {
+            continue;
+        }
+        let cue = Cue::new(track.id, 32.0, CueType::Drop, track.bpm, track.key, 0.5, 32)
+            .map_err(|e| e.to_string())?
+            .with_mix_roles([MixRole::Entry]);
+        library.with_library(|lib| lib.insert_cue(&cue).map_err(|e| e.to_string()))?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
 // ======== Cue 動的マッチング (MixSuggestion 用) ========
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]

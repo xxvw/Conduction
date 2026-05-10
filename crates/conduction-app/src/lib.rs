@@ -88,6 +88,7 @@ pub fn run() {
             commands::list_cues,
             commands::delete_cue,
             commands::list_match_candidates,
+            commands::inject_demo_cues,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

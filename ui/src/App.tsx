@@ -502,6 +502,41 @@ function DeckPanel({
       .map((c) => ({ slot: c.slot, ratio: c.position_sec / snapshot.duration_sec! }));
   }, [hotCues.cues, snapshot.duration_sec]);
 
+  // タイプ付き Cue (Drop / Intro / Breakdown 等) を波形に重ねる用に
+  // position_beats → 秒 → ratio に変換。
+  const typedCueMarkersSec = useMemo(() => {
+    const out: Array<{
+      type: import("@/lib/ipc").CueTypeId;
+      positionSec: number;
+      label: string;
+    }> = [];
+    for (const c of cues.cues) {
+      const idx = Math.floor(c.position_beats);
+      const fromBeats = beats[idx]?.position_sec;
+      const fromBpm =
+        c.bpm_at_cue > 0 ? (c.position_beats * 60) / c.bpm_at_cue : null;
+      const sec = fromBeats ?? fromBpm;
+      if (sec == null || !Number.isFinite(sec) || sec < 0) continue;
+      out.push({
+        type: c.cue_type,
+        positionSec: sec,
+        label: cueShortLabel(c.cue_type),
+      });
+    }
+    return out;
+  }, [cues.cues, beats]);
+
+  const typedCueMarkersRatio = useMemo(() => {
+    if (!snapshot.duration_sec || snapshot.duration_sec <= 0) return [];
+    return typedCueMarkersSec
+      .filter((c) => c.positionSec <= snapshot.duration_sec!)
+      .map((c) => ({
+        type: c.type,
+        ratio: c.positionSec / snapshot.duration_sec!,
+        label: c.label,
+      }));
+  }, [typedCueMarkersSec, snapshot.duration_sec]);
+
   // ループ範囲（IN だけ設定 / 完了 両方を扱う）
   const loopRangeSec = useMemo(() => {
     if (snapshot.loop_start_sec == null) return null;
@@ -650,6 +685,7 @@ function DeckPanel({
           waveform={waveform}
           positionRatio={positionRatio}
           hotCueRatios={hotCueRatios}
+          cueMarkers={typedCueMarkersRatio}
           loopRangeRatio={loopRangeRatio}
           height={64}
           onSeekRatio={(r) => {
@@ -664,6 +700,7 @@ function DeckPanel({
           waveform={waveform}
           beats={beats}
           hotCues={hotCues.cues}
+          cueMarkers={typedCueMarkersSec}
           loopRange={loopRangeSec}
           positionSec={livePosSec}
           durationSec={snapshot.duration_sec ?? 0}
@@ -869,4 +906,23 @@ function formatSec(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function cueShortLabel(t: import("@/lib/ipc").CueTypeId): string {
+  switch (t) {
+    case "drop":
+      return "DROP";
+    case "intro_start":
+      return "IN";
+    case "intro_end":
+      return "INTRO";
+    case "breakdown":
+      return "BRK";
+    case "outro":
+      return "OUT";
+    case "hot_cue":
+      return "HOT";
+    case "custom_hot_cue":
+      return "CUE";
+  }
 }

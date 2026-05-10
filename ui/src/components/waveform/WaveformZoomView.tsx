@@ -1,13 +1,22 @@
 import React, { useEffect, useRef } from "react";
 
+import type { CueTypeId } from "@/lib/ipc";
 import type { BeatDto } from "@/types/beat";
 import type { HotCueDto } from "@/types/hotcue";
 import type { WaveformPreview } from "@/types/waveform";
+
+export interface TypedCueMarkerSec {
+  type: CueTypeId;
+  positionSec: number;
+  label: string;
+}
 
 interface WaveformZoomViewProps {
   waveform: WaveformPreview | null;
   beats: BeatDto[];
   hotCues?: HotCueDto[];
+  /** タイプ付き Cue (秒位置)。 */
+  cueMarkers?: TypedCueMarkerSec[];
   /** 再生位置（秒）。中央に固定される。 */
   positionSec: number;
   /** 楽曲全長（秒）。 */
@@ -35,6 +44,7 @@ export function WaveformZoomView({
   waveform,
   beats,
   hotCues,
+  cueMarkers,
   positionSec,
   durationSec,
   windowSec = 4,
@@ -99,8 +109,11 @@ export function WaveformZoomView({
     if (hotCues && hotCues.length > 0) {
       drawHotCues(ctx, hotCues, startSec, endSec, xOf, height, markerTop, markerBottom);
     }
+    if (cueMarkers && cueMarkers.length > 0) {
+      drawTypedCues(ctx, cueMarkers, startSec, endSec, xOf, height, markerTop, markerBottom);
+    }
     drawCenterCursor(ctx, cssW, height);
-  }, [waveform, beats, hotCues, loopRange, positionSec, durationSec, windowSec, height]);
+  }, [waveform, beats, hotCues, cueMarkers, loopRange, positionSec, durationSec, windowSec, height]);
 
   return (
     <canvas
@@ -416,6 +429,62 @@ function drawHotCues(
     // 下端マーカー（同色、細め）
     ctx.fillStyle = color;
     ctx.fillRect(x - 1, height - bottomH, 3, bottomH);
+  }
+}
+
+/** タイプ付き Cue (秒位置) を波形上端寄りにフラグ + 縦線で描画。 */
+function drawTypedCues(
+  ctx: CanvasRenderingContext2D,
+  cues: TypedCueMarkerSec[],
+  startSec: number,
+  endSec: number,
+  xOf: (sec: number) => number,
+  height: number,
+  markerTop: number,
+  markerBottom: number,
+) {
+  for (const c of cues) {
+    if (c.positionSec < startSec || c.positionSec > endSec) continue;
+    const x = Math.round(xOf(c.positionSec));
+    const color = typedCueColor(c.type);
+
+    // 縦線 (波形領域全体)
+    ctx.strokeStyle = `${color}A0`;
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, markerTop);
+    ctx.lineTo(x + 0.5, height - markerBottom);
+    ctx.stroke();
+
+    // 上端のラベルフラグ
+    const flagH = markerTop;
+    const flagW = Math.max(28, c.label.length * 7 + 4);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, 0, flagW, flagH);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.font = "bold 8px JetBrains Mono, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(c.label, x + 2, flagH / 2 + 0.5);
+  }
+}
+
+function typedCueColor(t: CueTypeId): string {
+  switch (t) {
+    case "drop":
+      return "#E8B868";
+    case "intro_start":
+    case "intro_end":
+      return "#4FE3B2";
+    case "breakdown":
+      return "#A089DC";
+    case "outro":
+      return "#B0B0C0";
+    case "hot_cue":
+    case "custom_hot_cue":
+      return "#E8915A";
+    default:
+      return "#E8915A";
   }
 }
 
