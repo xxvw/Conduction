@@ -157,6 +157,17 @@ export const ipc = {
     return call<number>("inject_demo_cues");
   },
 
+  // --- Templates ---
+  listTemplatePresets() {
+    return call<TemplatePreset[]>("list_template_presets");
+  },
+  startTemplatePreset(presetId: string, bpm: number) {
+    return call<void>("start_template_preset", { presetId, bpm });
+  },
+  abortTemplate() {
+    return call<void>("abort_template");
+  },
+
   // --- USB Export (rekordbox-compatible) ---
   exportPreview(destination: string) {
     return call<ExportPreview>("export_preview", { destination });
@@ -245,6 +256,12 @@ export interface MatchQueryArgs {
   max_bpm_diff?: number;
   limit?: number;
   exclude_track_id?: string;
+}
+
+export interface TemplatePreset {
+  id: string;
+  name: string;
+  duration_beats: number;
 }
 
 export interface ExportPreview {

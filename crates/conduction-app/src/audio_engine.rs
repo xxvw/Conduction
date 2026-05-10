@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use conduction_audio::{DeckId, Mixer, OutputDevice, TempoRange};
+use conduction_conductor::{template::DeckSlot as TplDeckSlot, BuiltInTarget, Template, TemplateRunner};
 use crossbeam::channel::{self, Sender};
 use serde::Serialize;
 use tracing::{error, info, warn};
@@ -41,6 +42,8 @@ pub enum AudioCommand {
     SetCueSend { deck: DeckId, value: f32 },
     SetKeyLock { deck: DeckId, on: bool },
     SetPitchOffset { deck: DeckId, semitones: f32 },
+    StartTemplate { template: Template, bpm: f32 },
+    AbortTemplate,
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -81,6 +84,19 @@ pub struct MixerSnapshot {
     pub master_volume: f32,
     pub deck_a: DeckSnapshot,
     pub deck_b: DeckSnapshot,
+    /// 実行中テンプレートの状態。`None` なら非実行。
+    pub template: Option<TemplateStatus>,
+}
+
+/// 実行中テンプレートの UI 向けステータス。
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+pub struct TemplateStatus {
+    pub id: String,
+    pub name: String,
+    pub progress: f32,
+    pub elapsed_beats: f64,
+    pub duration_beats: f64,
+    pub beats_remaining: f64,
 }
 
 /// UI 側が保持するハンドル。
@@ -141,11 +157,31 @@ pub fn spawn(
             info!("audio engine thread started");
 
             let mut deck_paths: [Option<PathBuf>; 2] = [None, None];
+            let mut template_runner: Option<TemplateRunner> = None;
 
             loop {
                 while let Ok(cmd) = rx.try_recv() {
-                    apply_command(&device, cue_device.as_ref(), &mut mixer, &mut deck_paths, cmd);
+                    apply_command(
+                        &device,
+                        cue_device.as_ref(),
+                        &mut mixer,
+                        &mut deck_paths,
+                        &mut template_runner,
+                        cmd,
+                    );
                 }
+
+                // テンプレート進行
+                if let Some(runner) = &template_runner {
+                    for (target, value) in runner.evaluate_now() {
+                        apply_template_value(&mut mixer, target, value);
+                    }
+                    if runner.is_done() {
+                        info!(name = %runner.template().name, "template completed");
+                        template_runner = None;
+                    }
+                }
+
                 // 各デッキのループ判定。end 到達なら start にシークする。
                 if let Err(e) = mixer.deck_a().process_loop() {
                     error!(?e, "loop process failed (deck A)");
@@ -153,7 +189,7 @@ pub fn spawn(
                 if let Err(e) = mixer.deck_b().process_loop() {
                     error!(?e, "loop process failed (deck B)");
                 }
-                let snap = build_snapshot(&mut mixer, &deck_paths);
+                let snap = build_snapshot(&mut mixer, &deck_paths, template_runner.as_ref());
                 snapshot_worker.store(Arc::new(snap));
 
                 // 50Hz（20ms）で snapshot 更新。UI の polling は 100ms 程度想定。
@@ -173,6 +209,7 @@ fn apply_command(
     cue_device: Option<&OutputDevice>,
     mixer: &mut Mixer,
     paths: &mut [Option<PathBuf>; 2],
+    template_runner: &mut Option<TemplateRunner>,
     cmd: AudioCommand,
 ) {
     match cmd {
@@ -253,6 +290,48 @@ fn apply_command(
         AudioCommand::SetPitchOffset { deck, semitones } => {
             mixer.deck(deck).set_pitch_offset_semitones(semitones);
         }
+        AudioCommand::StartTemplate { template, bpm } => {
+            info!(
+                name = %template.name,
+                duration_beats = template.duration_beats,
+                bpm,
+                "template started"
+            );
+            *template_runner = Some(TemplateRunner::new(template, bpm));
+        }
+        AudioCommand::AbortTemplate => {
+            if let Some(r) = template_runner.take() {
+                info!(name = %r.template().name, "template aborted");
+            }
+        }
+    }
+}
+
+fn apply_template_value(mixer: &mut Mixer, target: BuiltInTarget, value: f32) {
+    let to_deck = |slot: TplDeckSlot| -> DeckId {
+        match slot {
+            TplDeckSlot::A => DeckId::A,
+            TplDeckSlot::B => DeckId::B,
+        }
+    };
+    match target {
+        BuiltInTarget::Crossfader => mixer.set_crossfader(value),
+        BuiltInTarget::MasterVolume => mixer.set_master_volume(value),
+        BuiltInTarget::DeckVolume { deck } => {
+            mixer.set_channel_volume(to_deck(deck), value);
+        }
+        BuiltInTarget::DeckEqLow { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().set_eq_low_db(value);
+        }
+        BuiltInTarget::DeckEqMid { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().set_eq_mid_db(value);
+        }
+        BuiltInTarget::DeckEqHigh { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().set_eq_high_db(value);
+        }
+        BuiltInTarget::DeckFilter { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().set_filter(value);
+        }
     }
 }
 
@@ -263,12 +342,25 @@ fn deck_idx(id: DeckId) -> usize {
     }
 }
 
-fn build_snapshot(mixer: &mut Mixer, paths: &[Option<PathBuf>; 2]) -> MixerSnapshot {
+fn build_snapshot(
+    mixer: &mut Mixer,
+    paths: &[Option<PathBuf>; 2],
+    template: Option<&TemplateRunner>,
+) -> MixerSnapshot {
+    let template_status = template.map(|r| TemplateStatus {
+        id: r.template().id.clone(),
+        name: r.template().name.clone(),
+        progress: r.progress(),
+        elapsed_beats: r.elapsed_beats(),
+        duration_beats: r.template().duration_beats,
+        beats_remaining: r.beats_remaining(),
+    });
     MixerSnapshot {
         crossfader: mixer.crossfader(),
         master_volume: mixer.master_volume(),
         deck_a: build_deck_snapshot(mixer, DeckId::A, paths[0].as_ref()),
         deck_b: build_deck_snapshot(mixer, DeckId::B, paths[1].as_ref()),
+        template: template_status,
     }
 }
 
@@ -363,6 +455,7 @@ fn empty_snapshot() -> MixerSnapshot {
         master_volume: 1.0,
         deck_a: empty_deck_snapshot("A"),
         deck_b: empty_deck_snapshot("B"),
+        template: None,
     }
 }
 

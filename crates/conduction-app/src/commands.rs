@@ -18,6 +18,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
+use conduction_conductor::Template;
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
@@ -546,6 +547,48 @@ pub fn delete_track(library: State<'_, LibraryHandle>, id: String) -> Result<(),
         lib.delete_track(TrackId::from_uuid(uuid))
             .map_err(|e| e.to_string())
     })
+}
+
+// ======== Templates (transition 自動オートメーション) ========
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct TemplatePresetDto {
+    pub id: String,
+    pub name: String,
+    pub duration_beats: f64,
+}
+
+#[tauri::command]
+pub fn list_template_presets() -> Vec<TemplatePresetDto> {
+    Template::all_presets()
+        .into_iter()
+        .map(|t| TemplatePresetDto {
+            id: t.id,
+            name: t.name,
+            duration_beats: t.duration_beats,
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn start_template_preset(
+    audio: State<'_, AudioHandle>,
+    preset_id: String,
+    bpm: f32,
+) -> CmdResult {
+    let preset = Template::all_presets()
+        .into_iter()
+        .find(|t| t.id == preset_id)
+        .ok_or_else(|| format!("unknown preset: {preset_id}"))?;
+    if !bpm.is_finite() || bpm <= 0.0 {
+        return Err(format!("invalid bpm: {bpm}"));
+    }
+    send(&audio, AudioCommand::StartTemplate { template: preset, bpm })
+}
+
+#[tauri::command]
+pub fn abort_template(audio: State<'_, AudioHandle>) -> CmdResult {
+    send(&audio, AudioCommand::AbortTemplate)
 }
 
 // ======== Typed Cue (Cue editor / dynamic matching 用) ========

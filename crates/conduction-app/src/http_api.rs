@@ -53,7 +53,9 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
-use crate::commands::{BeatDto, CueDto, HotCueDto, InsertCueArgs, MatchCandidateDto, MatchQueryArgs};
+use crate::commands::{
+    BeatDto, CueDto, HotCueDto, InsertCueArgs, MatchCandidateDto, MatchQueryArgs, TemplatePresetDto,
+};
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
@@ -153,6 +155,9 @@ fn build_router(state: AppState) -> Router {
         .route("/api/tracks/:id/cues", get(list_cues_for_track).post(insert_cue))
         .route("/api/cues/:id", delete(delete_cue))
         .route("/api/match", post(list_match_candidates))
+        .route("/api/templates/presets", get(list_template_presets))
+        .route("/api/templates/start", post(start_template_preset))
+        .route("/api/templates/abort", post(abort_template))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -927,6 +932,52 @@ async fn delete_cue(
     Ok(StatusCode::OK)
 }
 
+// ---- Templates ----------------------------------------------------------
+
+#[utoipa::path(get, path = "/api/templates/presets", responses((status = 200, body = Vec<TemplatePresetDto>)))]
+async fn list_template_presets() -> Json<Vec<TemplatePresetDto>> {
+    Json(crate::commands::list_template_presets())
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct StartTemplateRequest {
+    pub preset_id: String,
+    pub bpm: f32,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/templates/start",
+    request_body = StartTemplateRequest,
+    responses((status = 200))
+)]
+async fn start_template_preset(
+    State(s): State<AppState>,
+    Json(body): Json<StartTemplateRequest>,
+) -> ApiResult<StatusCode> {
+    let preset = conduction_conductor::Template::all_presets()
+        .into_iter()
+        .find(|t| t.id == body.preset_id)
+        .ok_or_else(|| ApiError::bad_request(format!("unknown preset: {}", body.preset_id)))?;
+    if !body.bpm.is_finite() || body.bpm <= 0.0 {
+        return Err(ApiError::bad_request(format!("invalid bpm: {}", body.bpm)));
+    }
+    send_audio(
+        &s.audio,
+        AudioCommand::StartTemplate {
+            template: preset,
+            bpm: body.bpm,
+        },
+    )?;
+    Ok(StatusCode::OK)
+}
+
+#[utoipa::path(post, path = "/api/templates/abort", responses((status = 200)))]
+async fn abort_template(State(s): State<AppState>) -> ApiResult<StatusCode> {
+    send_audio(&s.audio, AudioCommand::AbortTemplate)?;
+    Ok(StatusCode::OK)
+}
+
 // ---- Cue dynamic matching ----------------------------------------------
 
 #[utoipa::path(
@@ -1034,6 +1085,9 @@ pub struct HealthResponse {
         insert_cue,
         delete_cue,
         list_match_candidates,
+        list_template_presets,
+        start_template_preset,
+        abort_template,
     ),
     components(schemas(
         HealthResponse,
@@ -1071,6 +1125,9 @@ pub struct HealthResponse {
         InsertCueArgs,
         MatchCandidateDto,
         MatchQueryArgs,
+        TemplatePresetDto,
+        StartTemplateRequest,
+        crate::audio_engine::TemplateStatus,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
@@ -1082,6 +1139,7 @@ pub struct HealthResponse {
         (name = "export", description = "rekordbox-compatible USB export (Phase 1: skeleton)"),
         (name = "cue", description = "Typed cues (intro/breakdown/drop/outro/...) for dynamic matching"),
         (name = "match", description = "Dynamic cue matching from active deck state"),
+        (name = "template", description = "Transition templates: list presets / start / abort"),
     )
 )]
 struct ApiDoc;

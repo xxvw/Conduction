@@ -7,7 +7,9 @@ import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigModal } from "@/components/keyconfig/KeyConfigModal";
 import { CuePad } from "@/components/cues/CuePad";
 import { LoopPad } from "@/components/loop/LoopPad";
+import { TransportStatusPanel } from "@/components/override/TransportStatusPanel";
 import { MixSuggestion } from "@/components/suggestion/MixSuggestion";
+import { TemplateLauncher } from "@/components/templates/TemplateLauncher";
 import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
@@ -45,6 +47,22 @@ export function App() {
   const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
   const [keyHelpOpen, setKeyHelpOpen] = useState<boolean>(false);
   const [suggestionDismissed, setSuggestionDismissed] = useState<boolean>(false);
+  const [templatePresets, setTemplatePresets] = useState<
+    import("@/lib/ipc").TemplatePreset[]
+  >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    ipc
+      .listTemplatePresets()
+      .then((p) => {
+        if (!cancelled) setTemplatePresets(p);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const status = useMixerStatus(100);
   const tracksHandle = useTracks();
   const keyBindings = useKeyBindings();
@@ -183,6 +201,32 @@ export function App() {
     },
     [status, trackByPath],
   );
+
+  const handleStartTemplate = useCallback(
+    (presetId: string, bpm: number) => {
+      void ipc.startTemplatePreset(presetId, bpm);
+    },
+    [],
+  );
+
+  const handleAbortTemplate = useCallback(() => {
+    void ipc.abortTemplate();
+  }, []);
+
+  // Shift+Esc で実行中テンプレートを Abort (要件 §6.7)
+  useEffect(() => {
+    if (!status?.template) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && e.shiftKey) {
+        e.preventDefault();
+        if (window.confirm("Abort template? Current parameters will hold.")) {
+          handleAbortTemplate();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [status?.template, handleAbortTemplate]);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -396,6 +440,14 @@ export function App() {
             cuesB={cuesB}
             onBeatSync={handleBeatSync}
             onKeySync={handleKeySync}
+            templatePresets={templatePresets}
+            activeBpm={
+              activeTrackSummary
+                ? activeTrackSummary.bpm * (activeSnapshot?.playback_speed ?? 1)
+                : 0
+            }
+            onStartTemplate={handleStartTemplate}
+            onAbortTemplate={handleAbortTemplate}
           />
         )}
         {screen === "library" && (
@@ -470,6 +522,10 @@ function MixScreen({
   cuesB,
   onBeatSync,
   onKeySync,
+  templatePresets,
+  activeBpm,
+  onStartTemplate,
+  onAbortTemplate,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
@@ -484,6 +540,10 @@ function MixScreen({
   cuesB: ReturnType<typeof useCues>;
   onBeatSync: (deck: DeckId) => void;
   onKeySync: (deck: DeckId) => void;
+  templatePresets: import("@/lib/ipc").TemplatePreset[];
+  activeBpm: number;
+  onStartTemplate: (presetId: string, bpm: number) => void;
+  onAbortTemplate: () => void;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -513,6 +573,17 @@ function MixScreen({
         onKeySync={() => onKeySync("B")}
       />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
+      <div className="transport-bar">
+        <TemplateLauncher
+          presets={templatePresets}
+          currentBpm={activeBpm}
+          onStart={onStartTemplate}
+        />
+        <TransportStatusPanel
+          status={status.template}
+          onAbort={onAbortTemplate}
+        />
+      </div>
     </>
   );
 }

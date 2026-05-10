@@ -7,5 +7,12 @@
 #![forbid(unsafe_code)]
 
 pub mod matching;
+pub mod runner;
+pub mod template;
 
 pub use matching::{find_candidates, score, MatchQuery, MatchScore, ScoredCue};
+pub use runner::TemplateRunner;
+pub use template::{
+    evaluate_track, AutomationTrack, BuiltInTarget, CurveType, DeckSlot, Keyframe, Template,
+    TimePosition,
+};

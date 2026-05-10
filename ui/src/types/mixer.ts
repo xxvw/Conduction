@@ -35,9 +35,20 @@ export interface DeckSnapshot {
 
 export type EqBand = "low" | "mid" | "high";
 
+export interface TemplateStatus {
+  id: string;
+  name: string;
+  /** 0..1 */
+  progress: number;
+  elapsed_beats: number;
+  duration_beats: number;
+  beats_remaining: number;
+}
+
 export interface MixerSnapshot {
   crossfader: number;
   master_volume: number;
   deck_a: DeckSnapshot;
   deck_b: DeckSnapshot;
+  template: TemplateStatus | null;
 }
