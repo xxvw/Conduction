@@ -53,7 +53,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
-use crate::commands::{BeatDto, HotCueDto};
+use crate::commands::{BeatDto, CueDto, HotCueDto, InsertCueArgs};
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
@@ -148,6 +148,8 @@ fn build_router(state: AppState) -> Router {
         .route("/api/youtube/download", post(yt_download))
         .route("/api/export/preview", post(export_preview))
         .route("/api/export/execute", post(export_execute))
+        .route("/api/tracks/:id/cues", get(list_cues_for_track).post(insert_cue))
+        .route("/api/cues/:id", delete(delete_cue))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -830,6 +832,60 @@ async fn export_execute(
     Ok(Json(report))
 }
 
+// ---- Typed Cue ----------------------------------------------------------
+
+#[utoipa::path(
+    get,
+    path = "/api/tracks/{id}/cues",
+    responses((status = 200, body = Vec<CueDto>))
+)]
+async fn list_cues_for_track(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<CueDto>>> {
+    let tid = parse_track_id(&id)?;
+    let cues = s
+        .library
+        .with_library(|lib| {
+            lib.list_cues_for_track(tid)
+                .map(|cs| cs.iter().map(CueDto::from).collect::<Vec<_>>())
+                .map_err(|e| e.to_string())
+        })
+        .map_err(ApiError::internal)?;
+    Ok(Json(cues))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/tracks/{id}/cues",
+    request_body = InsertCueArgs,
+    responses((status = 200, body = CueDto))
+)]
+async fn insert_cue(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Json(mut body): Json<InsertCueArgs>,
+) -> ApiResult<Json<CueDto>> {
+    // path id を信頼ソースとして上書き (body と齟齬があっても無視)
+    body.track_id = id;
+    crate::commands::insert_cue_impl(&s.library, body)
+        .map(Json)
+        .map_err(ApiError::internal)
+}
+
+#[utoipa::path(delete, path = "/api/cues/{id}", responses((status = 200)))]
+async fn delete_cue(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| ApiError::bad_request(format!("invalid cue id: {e}")))?;
+    let cid = conduction_core::CueId::from_uuid(uuid);
+    s.library
+        .with_library(|lib| lib.delete_cue(cid).map_err(|e| e.to_string()))
+        .map_err(ApiError::internal)?;
+    Ok(StatusCode::OK)
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -914,6 +970,9 @@ pub struct HealthResponse {
         yt_download,
         export_preview,
         export_execute,
+        list_cues_for_track,
+        insert_cue,
+        delete_cue,
     ),
     components(schemas(
         HealthResponse,
@@ -945,6 +1004,8 @@ pub struct HealthResponse {
         ExportRequest,
         ExportPreview,
         ExportReport,
+        CueDto,
+        InsertCueArgs,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
@@ -954,6 +1015,7 @@ pub struct HealthResponse {
         (name = "system", description = "Audio devices / resources / settings"),
         (name = "youtube", description = "yt-dlp search and download"),
         (name = "export", description = "rekordbox-compatible USB export (Phase 1: skeleton)"),
+        (name = "cue", description = "Typed cues (intro/breakdown/drop/outro/...) for dynamic matching"),
     )
 )]
 struct ApiDoc;

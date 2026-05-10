@@ -426,6 +426,101 @@
   letter-spacing: 0.04em;
 }
 
+/* --- Typed Cue Pad (intro/drop/breakdown 等) --- */
+.cue-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--c-ink-2);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-3);
+}
+.cue-pad-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.cue-select {
+  background: var(--c-ink-3);
+  color: var(--c-ink-11);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cue-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--c-ink-9);
+  cursor: pointer;
+  user-select: none;
+}
+.cue-role input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--c-accent);
+}
+.cue-add-btn {
+  background: var(--c-accent);
+  color: var(--c-ink-1);
+  border: none;
+  border-radius: var(--r-2);
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.cue-add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.cue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  border-radius: var(--r-2);
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+  font-family: var(--font-mono);
+}
+.cue-chip[data-type="drop"] { color: var(--c-cue, #E8B868); border-color: var(--c-cue, #E8B868); }
+.cue-chip[data-type="intro_start"], .cue-chip[data-type="intro_end"] { color: #4FE3B2; border-color: #4FE3B2; }
+.cue-chip[data-type="breakdown"] { color: var(--c-loop, #A089DC); border-color: var(--c-loop, #A089DC); }
+.cue-chip[data-type="outro"] { color: var(--c-ink-9); }
+.cue-chip-type { font-weight: 700; }
+.cue-chip-pos { color: var(--c-ink-9); }
+.cue-chip-role { color: var(--c-ink-7); font-size: 8px; }
+.cue-chip-del {
+  background: transparent;
+  border: none;
+  color: var(--c-ink-9);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+.cue-chip-del:hover { color: var(--c-danger, #FF4A5C); }
+
 /* --- Hot Cue Pad --- */
 .hotcue-pad {
   display: grid;

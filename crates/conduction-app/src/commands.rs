@@ -8,8 +8,8 @@ use conduction_analysis::{
     DEFAULT_WAVEFORM_BINS,
 };
 use conduction_audio::OutputDevice;
-use conduction_core::Beat;
-use serde::Serialize;
+use conduction_core::{Beat, Cue, CueId, CueType, MixRole};
+use serde::{Deserialize, Serialize};
 use conduction_core::TrackId;
 use conduction_library::{build_track_from_file, Library};
 use parking_lot::Mutex;
@@ -524,6 +524,178 @@ pub fn delete_track(library: State<'_, LibraryHandle>, id: String) -> Result<(),
         lib.delete_track(TrackId::from_uuid(uuid))
             .map_err(|e| e.to_string())
     })
+}
+
+// ======== Typed Cue (Cue editor / dynamic matching 用) ========
+
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+pub struct CueDto {
+    pub id: String,
+    pub track_id: String,
+    pub position_beats: f64,
+    pub cue_type: String,
+    pub bpm_at_cue: f32,
+    pub key_camelot: String,
+    pub energy_level: f32,
+    pub phrase_length: u32,
+    /// "entry" / "exit" の集合。
+    pub mixable_as: Vec<String>,
+    pub compatible_energy_min: f32,
+    pub compatible_energy_max: f32,
+    pub section_start_beats: Option<f64>,
+    pub section_end_beats: Option<f64>,
+}
+
+impl From<&Cue> for CueDto {
+    fn from(c: &Cue) -> Self {
+        let (start, end) = match &c.section {
+            Some(r) => (Some(r.start), Some(r.end)),
+            None => (None, None),
+        };
+        Self {
+            id: c.id.as_uuid().to_string(),
+            track_id: c.track_id.as_uuid().to_string(),
+            position_beats: c.position_beats,
+            cue_type: cue_type_to_string(c.cue_type),
+            bpm_at_cue: c.bpm_at_cue,
+            key_camelot: c.key_at_cue.to_camelot(),
+            energy_level: c.energy_level,
+            phrase_length: c.phrase_length,
+            mixable_as: c
+                .mixable_as
+                .iter()
+                .map(|r| mix_role_to_string(*r).to_string())
+                .collect(),
+            compatible_energy_min: c.compatible_energy.start,
+            compatible_energy_max: c.compatible_energy.end,
+            section_start_beats: start,
+            section_end_beats: end,
+        }
+    }
+}
+
+fn cue_type_to_string(t: CueType) -> String {
+    match t {
+        CueType::HotCue => "hot_cue",
+        CueType::IntroStart => "intro_start",
+        CueType::IntroEnd => "intro_end",
+        CueType::Breakdown => "breakdown",
+        CueType::Drop => "drop",
+        CueType::Outro => "outro",
+        CueType::CustomHotCue => "custom_hot_cue",
+    }
+    .to_string()
+}
+
+fn parse_cue_type(s: &str) -> Result<CueType, String> {
+    Ok(match s {
+        "hot_cue" => CueType::HotCue,
+        "intro_start" => CueType::IntroStart,
+        "intro_end" => CueType::IntroEnd,
+        "breakdown" => CueType::Breakdown,
+        "drop" => CueType::Drop,
+        "outro" => CueType::Outro,
+        "custom_hot_cue" => CueType::CustomHotCue,
+        other => return Err(format!("invalid cue_type: {other}")),
+    })
+}
+
+fn mix_role_to_string(r: MixRole) -> &'static str {
+    match r {
+        MixRole::Entry => "entry",
+        MixRole::Exit => "exit",
+    }
+}
+
+fn parse_mix_role(s: &str) -> Result<MixRole, String> {
+    Ok(match s {
+        "entry" => MixRole::Entry,
+        "exit" => MixRole::Exit,
+        other => return Err(format!("invalid mix role: {other}")),
+    })
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct InsertCueArgs {
+    pub track_id: String,
+    pub position_beats: f64,
+    pub cue_type: String,
+    pub phrase_length: u32,
+    /// 0..=1。空なら 0.5。
+    pub energy_level: Option<f32>,
+    /// `["entry"]` / `["exit"]` / `["entry", "exit"]`。
+    pub mix_roles: Vec<String>,
+    /// セクション Cue の場合の終端 (beats)。
+    pub section_end_beats: Option<f64>,
+}
+
+/// `insert_cue` のコアロジック。Tauri command と HTTP API の両方から呼ばれる。
+pub fn insert_cue_impl(library: &LibraryHandle, args: InsertCueArgs) -> Result<CueDto, String> {
+    let uuid = Uuid::parse_str(&args.track_id).map_err(|e| format!("invalid track id: {e}"))?;
+    let track_id = TrackId::from_uuid(uuid);
+    let cue_type = parse_cue_type(&args.cue_type)?;
+    let energy = args.energy_level.unwrap_or(0.5).clamp(0.0, 1.0);
+
+    let track = library
+        .with_library(|lib| lib.get_track(track_id).map_err(|e| e.to_string()))?
+        .ok_or_else(|| format!("track not found: {}", args.track_id))?;
+    // bpm == 0 の未解析トラックは Cue::new で弾かれる。
+    let bpm = if track.bpm > 0.0 { track.bpm } else { 120.0 };
+
+    let mut cue = Cue::new(
+        track_id,
+        args.position_beats,
+        cue_type,
+        bpm,
+        track.key,
+        energy,
+        args.phrase_length,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let roles: Result<Vec<_>, _> = args.mix_roles.iter().map(|s| parse_mix_role(s)).collect();
+    cue = cue.with_mix_roles(roles?);
+
+    if let Some(end) = args.section_end_beats {
+        cue = cue
+            .with_section(args.position_beats..end)
+            .map_err(|e| e.to_string())?;
+    }
+
+    library.with_library(|lib| lib.insert_cue(&cue).map_err(|e| e.to_string()))?;
+    Ok(CueDto::from(&cue))
+}
+
+#[tauri::command]
+pub fn insert_cue(
+    library: State<'_, LibraryHandle>,
+    args: InsertCueArgs,
+) -> Result<CueDto, String> {
+    insert_cue_impl(&library, args)
+}
+
+#[tauri::command]
+pub fn list_cues(
+    library: State<'_, LibraryHandle>,
+    track_id: String,
+) -> Result<Vec<CueDto>, String> {
+    let uuid = Uuid::parse_str(&track_id).map_err(|e| format!("invalid track id: {e}"))?;
+    let id = TrackId::from_uuid(uuid);
+    library.with_library(|lib| {
+        lib.list_cues_for_track(id)
+            .map(|cs| cs.iter().map(CueDto::from).collect())
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+pub fn delete_cue(
+    library: State<'_, LibraryHandle>,
+    cue_id: String,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&cue_id).map_err(|e| format!("invalid cue id: {e}"))?;
+    let id = CueId::from_uuid(uuid);
+    library.with_library(|lib| lib.delete_cue(id).map_err(|e| e.to_string()))
 }
 
 // ======== USB Export (rekordbox-compatible) ========

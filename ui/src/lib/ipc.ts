@@ -132,6 +132,17 @@ export const ipc = {
     return call<void>("delete_hot_cue", { trackId, slot });
   },
 
+  // --- Typed Cues (intro/drop/breakdown 等の構造 Cue) ---
+  listCues(trackId: string) {
+    return call<CueDto[]>("list_cues", { trackId });
+  },
+  insertCue(args: InsertCueArgs) {
+    return call<CueDto>("insert_cue", { args });
+  },
+  deleteCue(cueId: string) {
+    return call<void>("delete_cue", { cueId });
+  },
+
   // --- USB Export (rekordbox-compatible) ---
   exportPreview(destination: string) {
     return call<ExportPreview>("export_preview", { destination });
@@ -166,6 +177,43 @@ export interface YtDoneEvent {
 }
 
 export type AudioFormat = "m4a" | "mp3" | "opus" | "wav" | "flac";
+
+export type CueTypeId =
+  | "hot_cue"
+  | "intro_start"
+  | "intro_end"
+  | "breakdown"
+  | "drop"
+  | "outro"
+  | "custom_hot_cue";
+
+export type MixRoleId = "entry" | "exit";
+
+export interface CueDto {
+  id: string;
+  track_id: string;
+  position_beats: number;
+  cue_type: CueTypeId;
+  bpm_at_cue: number;
+  key_camelot: string;
+  energy_level: number;
+  phrase_length: number;
+  mixable_as: MixRoleId[];
+  compatible_energy_min: number;
+  compatible_energy_max: number;
+  section_start_beats: number | null;
+  section_end_beats: number | null;
+}
+
+export interface InsertCueArgs {
+  track_id: string;
+  position_beats: number;
+  cue_type: CueTypeId;
+  phrase_length: number;
+  energy_level?: number;
+  mix_roles: MixRoleId[];
+  section_end_beats?: number | null;
+}
 
 export interface ExportPreview {
   root: string;

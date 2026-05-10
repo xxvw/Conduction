@@ -5,11 +5,13 @@ import "./App.css";
 import { FxPad } from "@/components/fx/FxPad";
 import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigModal } from "@/components/keyconfig/KeyConfigModal";
+import { CuePad } from "@/components/cues/CuePad";
 import { LoopPad } from "@/components/loop/LoopPad";
 import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
 import { useBeats } from "@/hooks/useBeats";
+import { useCues } from "@/hooks/useCues";
 import { useHotCues } from "@/hooks/useHotCues";
 import { useInterpolatedPosition } from "@/hooks/useInterpolatedPosition";
 import { useKeyBindings } from "@/hooks/useKeyBindings";
@@ -17,7 +19,7 @@ import { useMixerStatus } from "@/hooks/useMixerStatus";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
 import { useWaveform } from "@/hooks/useWaveform";
-import { snapToNearestBeat } from "@/lib/beats";
+import { secondsToBeatIndex, snapToNearestBeat } from "@/lib/beats";
 import { ipc } from "@/lib/ipc";
 import {
   DEFAULT_ZOOM_SEC,
@@ -62,6 +64,8 @@ export function App() {
   const beatsB = useBeats(deckBTrackId);
   const hotCuesA = useHotCues(deckATrackId);
   const hotCuesB = useHotCues(deckBTrackId);
+  const cuesA = useCues(deckATrackId);
+  const cuesB = useCues(deckBTrackId);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -271,6 +275,8 @@ export function App() {
             beatsB={beatsB}
             hotCuesA={hotCuesA}
             hotCuesB={hotCuesB}
+            cuesA={cuesA}
+            cuesB={cuesB}
           />
         )}
         {screen === "library" && (
@@ -319,6 +325,8 @@ function MixScreen({
   beatsB,
   hotCuesA,
   hotCuesB,
+  cuesA,
+  cuesB,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
@@ -329,6 +337,8 @@ function MixScreen({
   beatsB: import("@/types/beat").BeatDto[];
   hotCuesA: ReturnType<typeof useHotCues>;
   hotCuesB: ReturnType<typeof useHotCues>;
+  cuesA: ReturnType<typeof useCues>;
+  cuesB: ReturnType<typeof useCues>;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -341,6 +351,7 @@ function MixScreen({
         zoomWindowSec={zoomWindowSec}
         beats={beatsA}
         hotCues={hotCuesA}
+        cues={cuesA}
       />
       <DeckPanel
         snapshot={status.deck_b}
@@ -350,6 +361,7 @@ function MixScreen({
         zoomWindowSec={zoomWindowSec}
         beats={beatsB}
         hotCues={hotCuesB}
+        cues={cuesB}
       />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
@@ -381,6 +393,7 @@ function DeckPanel({
   zoomWindowSec,
   beats,
   hotCues,
+  cues,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
@@ -389,6 +402,7 @@ function DeckPanel({
   zoomWindowSec: number;
   beats: import("@/types/beat").BeatDto[];
   hotCues: ReturnType<typeof useHotCues>;
+  cues: ReturnType<typeof useCues>;
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
@@ -705,6 +719,23 @@ function DeckPanel({
         }}
         onSet={(slot, posSec) => void hotCues.set(slot, snapToNearestBeat(posSec, beats))}
         onDelete={(slot) => void hotCues.remove(slot)}
+      />
+
+      <CuePad
+        cues={cues.cues}
+        enabled={loadedTrack != null}
+        onAdd={({ cueType, phraseLength, mixRoles }) => {
+          if (!loadedTrack) return;
+          const beatIdx = secondsToBeatIndex(livePosSec, beats);
+          void cues.insert({
+            track_id: loadedTrack.id,
+            position_beats: beatIdx,
+            cue_type: cueType,
+            phrase_length: phraseLength,
+            mix_roles: mixRoles,
+          });
+        }}
+        onDelete={(cueId) => void cues.remove(cueId)}
       />
     </section>
   );
