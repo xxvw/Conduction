@@ -48,6 +48,7 @@ export function App() {
   const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
   const [keyHelpOpen, setKeyHelpOpen] = useState<boolean>(false);
   const [suggestionDismissed, setSuggestionDismissed] = useState<boolean>(false);
+  const [focusedTarget, setFocusedTarget] = useState<string>("crossfader");
   const [templatePresets, setTemplatePresets] = useState<
     import("@/lib/ipc").TemplatePreset[]
   >([]);
@@ -232,18 +233,18 @@ export function App() {
       const k = e.key.toLowerCase();
       if (k === "o") {
         e.preventDefault();
-        void ipc.overrideParam("crossfader");
+        void ipc.overrideParam(focusedTarget);
       } else if (k === "r") {
         e.preventDefault();
-        void ipc.resumeParam("crossfader", 4);
+        void ipc.resumeParam(focusedTarget, 4);
       } else if (k === "c") {
         e.preventDefault();
-        void ipc.commitParam("crossfader");
+        void ipc.commitParam(focusedTarget);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [status?.template, handleAbortTemplate]);
+  }, [status?.template, focusedTarget, handleAbortTemplate]);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -465,6 +466,8 @@ export function App() {
             }
             onStartTemplate={handleStartTemplate}
             onAbortTemplate={handleAbortTemplate}
+            focusedTarget={focusedTarget}
+            onFocus={setFocusedTarget}
           />
         )}
         {screen === "library" && (
@@ -543,6 +546,8 @@ function MixScreen({
   activeBpm,
   onStartTemplate,
   onAbortTemplate,
+  focusedTarget,
+  onFocus,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
@@ -561,6 +566,8 @@ function MixScreen({
   activeBpm: number;
   onStartTemplate: (presetId: string, bpm: number) => void;
   onAbortTemplate: () => void;
+  focusedTarget: string;
+  onFocus: (key: string) => void;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -576,6 +583,9 @@ function MixScreen({
         cues={cuesA}
         onBeatSync={() => onBeatSync("A")}
         onKeySync={() => onKeySync("A")}
+        mixerStatus={status}
+        focusedTarget={focusedTarget}
+        onFocus={onFocus}
       />
       <DeckPanel
         snapshot={status.deck_b}
@@ -588,11 +598,16 @@ function MixScreen({
         cues={cuesB}
         onBeatSync={() => onBeatSync("B")}
         onKeySync={() => onKeySync("B")}
+        mixerStatus={status}
+        focusedTarget={focusedTarget}
+        onFocus={onFocus}
       />
       <BusPanel
         crossfader={status.crossfader}
         master={status.master_volume}
         templateStatus={status.template}
+        focusedTarget={focusedTarget}
+        onFocus={onFocus}
       />
       <div className="transport-bar">
         <TemplateLauncher
@@ -603,6 +618,15 @@ function MixScreen({
         <TransportStatusPanel
           status={status.template}
           onAbort={onAbortTemplate}
+        />
+        <FocusedOverridePanel
+          targetKey={focusedTarget}
+          mode={
+            status.template?.automation_modes.find(
+              (m) => m.target_key === focusedTarget,
+            )?.mode ?? "idle"
+          }
+          templateActive={status.template != null}
         />
       </div>
     </>
@@ -637,6 +661,9 @@ function DeckPanel({
   cues,
   onBeatSync,
   onKeySync,
+  mixerStatus,
+  focusedTarget,
+  onFocus,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
@@ -648,6 +675,9 @@ function DeckPanel({
   cues: ReturnType<typeof useCues>;
   onBeatSync: () => void;
   onKeySync: () => void;
+  mixerStatus: MixerSnapshot | null;
+  focusedTarget: string;
+  onFocus: (key: string) => void;
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
@@ -900,7 +930,13 @@ function DeckPanel({
         </span>
       </div>
 
-      <div className="control">
+      <div
+        className="control param-control"
+        data-target={`deck_volume.${deck}`}
+        data-mode={lookupMode(mixerStatus, `deck_volume.${deck}`)}
+        data-focused={focusedTarget === `deck_volume.${deck}`}
+        onClick={() => onFocus(`deck_volume.${deck}`)}
+      >
         <div className="control-label">
           <span>CH VOLUME</span>
           <span className="value">
@@ -1056,17 +1092,28 @@ function BusPanel({
   crossfader,
   master,
   templateStatus,
+  focusedTarget,
+  onFocus,
 }: {
   crossfader: number;
   master: number;
   templateStatus: import("@/types/mixer").TemplateStatus | null;
+  focusedTarget: string;
+  onFocus: (key: string) => void;
 }) {
-  const xfaderMode =
-    templateStatus?.automation_modes.find((m) => m.target_key === "crossfader")
-      ?.mode ?? "idle";
+  const lookup = (key: string) =>
+    templateStatus?.automation_modes.find((m) => m.target_key === key)?.mode ?? "idle";
+  const xfaderMode = lookup("crossfader");
+  const masterMode = lookup("master_volume");
   return (
     <section className="bus">
-      <div className="control" data-mode={xfaderMode}>
+      <div
+        className="control param-control"
+        data-target="crossfader"
+        data-mode={xfaderMode}
+        data-focused={focusedTarget === "crossfader"}
+        onClick={() => onFocus("crossfader")}
+      >
         <div className="control-label">
           <span>CROSSFADER</span>
           <span className="value">
@@ -1082,22 +1129,24 @@ function BusPanel({
           value={crossfader}
           onChange={(e) => ipc.setCrossfader(parseFloat(e.target.value))}
         />
-        <div className="bus-row">
-          <OverrideControls
-            targetKey="crossfader"
-            mode={xfaderMode}
-            templateActive={templateStatus != null}
-          />
-          <button
-            className="btn"
-            style={{ marginLeft: "auto", padding: "var(--s-2) var(--s-4)" }}
-            onClick={() => ipc.setCrossfader(0)}
-          >
-            Center
-          </button>
-        </div>
+        <button
+          className="btn"
+          style={{ alignSelf: "flex-end", padding: "var(--s-2) var(--s-4)" }}
+          onClick={(e) => {
+            e.stopPropagation();
+            ipc.setCrossfader(0);
+          }}
+        >
+          Center
+        </button>
       </div>
-      <div className="control">
+      <div
+        className="control param-control"
+        data-target="master_volume"
+        data-mode={masterMode}
+        data-focused={focusedTarget === "master_volume"}
+        onClick={() => onFocus("master_volume")}
+      >
         <div className="control-label">
           <span>MASTER</span>
           <span className="value">{master.toFixed(2)}</span>
@@ -1115,11 +1164,78 @@ function BusPanel({
   );
 }
 
+function FocusedOverridePanel({
+  targetKey,
+  mode,
+  templateActive,
+}: {
+  targetKey: string;
+  mode: import("@/types/mixer").AutomationModeKind;
+  templateActive: boolean;
+}) {
+  return (
+    <div className="focus-override">
+      <span className="focus-override-label">FOCUS</span>
+      <span className="focus-override-target" title="Click a fader to focus it">
+        {targetDisplayName(targetKey)}
+      </span>
+      <OverrideControls
+        targetKey={targetKey}
+        mode={mode}
+        templateActive={templateActive}
+      />
+    </div>
+  );
+}
+
 function formatSec(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) sec = 0;
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+/** TemplateStatus から target の現在 mode を取り出す。未実行や未登録なら "idle"。 */
+function lookupMode(
+  status: MixerSnapshot | null,
+  key: string,
+): import("@/types/mixer").AutomationModeKind {
+  return (
+    status?.template?.automation_modes.find((m) => m.target_key === key)?.mode ??
+    "idle"
+  );
+}
+
+/** target_key の表示用ラベル。 */
+function targetDisplayName(key: string): string {
+  switch (key) {
+    case "crossfader":
+      return "Crossfader";
+    case "master_volume":
+      return "Master Volume";
+    case "deck_volume.A":
+      return "Deck A Volume";
+    case "deck_volume.B":
+      return "Deck B Volume";
+    case "deck_eq_low.A":
+      return "Deck A · Low";
+    case "deck_eq_low.B":
+      return "Deck B · Low";
+    case "deck_eq_mid.A":
+      return "Deck A · Mid";
+    case "deck_eq_mid.B":
+      return "Deck B · Mid";
+    case "deck_eq_high.A":
+      return "Deck A · High";
+    case "deck_eq_high.B":
+      return "Deck B · High";
+    case "deck_filter.A":
+      return "Deck A · Filter";
+    case "deck_filter.B":
+      return "Deck B · Filter";
+    default:
+      return key;
+  }
 }
 
 function cueShortLabel(t: import("@/lib/ipc").CueTypeId): string {

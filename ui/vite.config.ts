@@ -16,6 +16,9 @@ export default defineConfig(async () => ({
       "@": resolve(__dirname, "src"),
       "@design": resolve(__dirname, "design-system"),
     },
+    // .jsx は要件 §15.11 の design mockup 専用 (import しない)。
+    // resolver から外しておかないと、新規 .tsx を作るたびに同名 mockup と衝突して落ちる。
+    extensions: [".mjs", ".js", ".mts", ".ts", ".tsx", ".json"],
   },
   server: {
     port: 1420,
