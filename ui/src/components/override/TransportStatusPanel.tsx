@@ -19,6 +19,11 @@ export function TransportStatusPanel({
       <div className="transport-status-row">
         <span className="transport-status-label">▶ TEMPLATE</span>
         <span className="transport-status-name">{status.name}</span>
+        {status.override_count > 0 && (
+          <span className="transport-status-overrides" title="Parameters under manual control">
+            {status.override_count} override{status.override_count > 1 ? "s" : ""}
+          </span>
+        )}
         <span className="transport-status-progress-text">
           {pct}% · {remainingBars} bars left
         </span>

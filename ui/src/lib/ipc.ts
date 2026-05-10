@@ -167,6 +167,15 @@ export const ipc = {
   abortTemplate() {
     return call<void>("abort_template");
   },
+  overrideParam(targetKey: string) {
+    return call<void>("override_param", { targetKey });
+  },
+  resumeParam(targetKey: string, durationBeats?: number) {
+    return call<void>("resume_param", { targetKey, durationBeats });
+  },
+  commitParam(targetKey: string) {
+    return call<void>("commit_param", { targetKey });
+  },
 
   // --- USB Export (rekordbox-compatible) ---
   exportPreview(destination: string) {

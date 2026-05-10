@@ -35,6 +35,18 @@ export interface DeckSnapshot {
 
 export type EqBand = "low" | "mid" | "high";
 
+export type AutomationModeKind =
+  | "idle"
+  | "automated"
+  | "overridden"
+  | "resuming"
+  | "committed";
+
+export interface AutomationModeEntry {
+  target_key: string;
+  mode: AutomationModeKind;
+}
+
 export interface TemplateStatus {
   id: string;
   name: string;
@@ -43,6 +55,8 @@ export interface TemplateStatus {
   elapsed_beats: number;
   duration_beats: number;
   beats_remaining: number;
+  override_count: number;
+  automation_modes: AutomationModeEntry[];
 }
 
 export interface MixerSnapshot {

@@ -94,6 +94,9 @@ pub fn run() {
             commands::list_template_presets,
             commands::start_template_preset,
             commands::abort_template,
+            commands::override_param,
+            commands::resume_param,
+            commands::commit_param,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

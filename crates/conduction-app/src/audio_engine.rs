@@ -4,6 +4,7 @@
 //! UI スレッドからは `AudioHandle` 経由で channel にコマンドを送り、
 //! スナップショットを `ArcSwap` で非同期に読み取る。
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -11,7 +12,10 @@ use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use conduction_audio::{DeckId, Mixer, OutputDevice, TempoRange};
-use conduction_conductor::{template::DeckSlot as TplDeckSlot, BuiltInTarget, Template, TemplateRunner};
+use conduction_conductor::{
+    automation::effective_value as automation_effective, template::DeckSlot as TplDeckSlot,
+    AutomationMode, AutomationModeKind, BuiltInTarget, Template, TemplateRunner,
+};
 use crossbeam::channel::{self, Sender};
 use serde::Serialize;
 use tracing::{error, info, warn};
@@ -44,6 +48,9 @@ pub enum AudioCommand {
     SetPitchOffset { deck: DeckId, semitones: f32 },
     StartTemplate { template: Template, bpm: f32 },
     AbortTemplate,
+    OverrideParam { target: BuiltInTarget },
+    ResumeParam { target: BuiltInTarget, duration_beats: f64 },
+    CommitParam { target: BuiltInTarget },
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -97,6 +104,16 @@ pub struct TemplateStatus {
     pub elapsed_beats: f64,
     pub duration_beats: f64,
     pub beats_remaining: f64,
+    /// 現在 Overridden / Resuming / Committed のいずれかになっているターゲット数 (UI のカウンタ用)。
+    pub override_count: usize,
+    /// 各 BuiltInTarget の現在状態 (UI の indicator 用)。
+    pub automation_modes: Vec<AutomationModeEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+pub struct AutomationModeEntry {
+    pub target_key: String,
+    pub mode: AutomationModeKind,
 }
 
 /// UI 側が保持するハンドル。
@@ -158,6 +175,7 @@ pub fn spawn(
 
             let mut deck_paths: [Option<PathBuf>; 2] = [None, None];
             let mut template_runner: Option<TemplateRunner> = None;
+            let mut automation: HashMap<BuiltInTarget, AutomationMode> = HashMap::new();
 
             loop {
                 while let Ok(cmd) = rx.try_recv() {
@@ -167,18 +185,28 @@ pub fn spawn(
                         &mut mixer,
                         &mut deck_paths,
                         &mut template_runner,
+                        &mut automation,
                         cmd,
                     );
                 }
 
                 // テンプレート進行
                 if let Some(runner) = &template_runner {
+                    let current_beats = runner.elapsed_beats();
                     for (target, value) in runner.evaluate_now() {
-                        apply_template_value(&mut mixer, target, value);
+                        let mode =
+                            automation.entry(target).or_insert(AutomationMode::Automated);
+                        if let Some(eff) = automation_effective(mode, value, current_beats) {
+                            apply_template_value(&mut mixer, target, eff);
+                        }
                     }
                     if runner.is_done() {
                         info!(name = %runner.template().name, "template completed");
                         template_runner = None;
+                        // 終了時は全 mode を Idle に戻す
+                        for v in automation.values_mut() {
+                            *v = AutomationMode::Idle;
+                        }
                     }
                 }
 
@@ -189,7 +217,12 @@ pub fn spawn(
                 if let Err(e) = mixer.deck_b().process_loop() {
                     error!(?e, "loop process failed (deck B)");
                 }
-                let snap = build_snapshot(&mut mixer, &deck_paths, template_runner.as_ref());
+                let snap = build_snapshot(
+                    &mut mixer,
+                    &deck_paths,
+                    template_runner.as_ref(),
+                    &automation,
+                );
                 snapshot_worker.store(Arc::new(snap));
 
                 // 50Hz（20ms）で snapshot 更新。UI の polling は 100ms 程度想定。
@@ -210,6 +243,7 @@ fn apply_command(
     mixer: &mut Mixer,
     paths: &mut [Option<PathBuf>; 2],
     template_runner: &mut Option<TemplateRunner>,
+    automation: &mut HashMap<BuiltInTarget, AutomationMode>,
     cmd: AudioCommand,
 ) {
     match cmd {
@@ -297,12 +331,71 @@ fn apply_command(
                 bpm,
                 "template started"
             );
+            // 全 track を Automated 化。既存の Idle/Overridden/Committed を上書き。
+            for track in &template.tracks {
+                automation.insert(track.target, AutomationMode::Automated);
+            }
             *template_runner = Some(TemplateRunner::new(template, bpm));
         }
         AudioCommand::AbortTemplate => {
             if let Some(r) = template_runner.take() {
                 info!(name = %r.template().name, "template aborted");
             }
+            for v in automation.values_mut() {
+                *v = AutomationMode::Idle;
+            }
+        }
+        AudioCommand::OverrideParam { target } => {
+            automation.insert(target, AutomationMode::Overridden);
+        }
+        AudioCommand::ResumeParam {
+            target,
+            duration_beats,
+        } => {
+            // resume 時の起点 beat と current value を runner から取り出す。
+            let from_value = current_mixer_value(mixer, target);
+            let started = template_runner
+                .as_ref()
+                .map(|r| r.elapsed_beats())
+                .unwrap_or(0.0);
+            automation.insert(
+                target,
+                AutomationMode::Resuming {
+                    from_value,
+                    started_at_beats: started,
+                    duration_beats: duration_beats.max(0.25),
+                },
+            );
+        }
+        AudioCommand::CommitParam { target } => {
+            let fixed_value = current_mixer_value(mixer, target);
+            automation.insert(target, AutomationMode::Committed { fixed_value });
+        }
+    }
+}
+
+fn current_mixer_value(mixer: &mut Mixer, target: BuiltInTarget) -> f32 {
+    let to_deck = |slot: TplDeckSlot| -> DeckId {
+        match slot {
+            TplDeckSlot::A => DeckId::A,
+            TplDeckSlot::B => DeckId::B,
+        }
+    };
+    match target {
+        BuiltInTarget::Crossfader => mixer.crossfader(),
+        BuiltInTarget::MasterVolume => mixer.master_volume(),
+        BuiltInTarget::DeckVolume { deck } => mixer.deck(to_deck(deck)).channel_volume(),
+        BuiltInTarget::DeckEqLow { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().eq_low_db()
+        }
+        BuiltInTarget::DeckEqMid { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().eq_mid_db()
+        }
+        BuiltInTarget::DeckEqHigh { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().eq_high_db()
+        }
+        BuiltInTarget::DeckFilter { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().filter()
         }
     }
 }
@@ -346,14 +439,37 @@ fn build_snapshot(
     mixer: &mut Mixer,
     paths: &[Option<PathBuf>; 2],
     template: Option<&TemplateRunner>,
+    automation: &HashMap<BuiltInTarget, AutomationMode>,
 ) -> MixerSnapshot {
-    let template_status = template.map(|r| TemplateStatus {
-        id: r.template().id.clone(),
-        name: r.template().name.clone(),
-        progress: r.progress(),
-        elapsed_beats: r.elapsed_beats(),
-        duration_beats: r.template().duration_beats,
-        beats_remaining: r.beats_remaining(),
+    let template_status = template.map(|r| {
+        let modes: Vec<AutomationModeEntry> = automation
+            .iter()
+            .map(|(target, mode)| AutomationModeEntry {
+                target_key: target_to_key(*target),
+                mode: mode.kind(),
+            })
+            .collect();
+        let override_count = automation
+            .values()
+            .filter(|m| {
+                matches!(
+                    m.kind(),
+                    AutomationModeKind::Overridden
+                        | AutomationModeKind::Resuming
+                        | AutomationModeKind::Committed
+                )
+            })
+            .count();
+        TemplateStatus {
+            id: r.template().id.clone(),
+            name: r.template().name.clone(),
+            progress: r.progress(),
+            elapsed_beats: r.elapsed_beats(),
+            duration_beats: r.template().duration_beats,
+            beats_remaining: r.beats_remaining(),
+            override_count,
+            automation_modes: modes,
+        }
     });
     MixerSnapshot {
         crossfader: mixer.crossfader(),
@@ -361,6 +477,50 @@ fn build_snapshot(
         deck_a: build_deck_snapshot(mixer, DeckId::A, paths[0].as_ref()),
         deck_b: build_deck_snapshot(mixer, DeckId::B, paths[1].as_ref()),
         template: template_status,
+    }
+}
+
+/// `BuiltInTarget` を UI が key として使える短文字列に変換する。
+/// UI 側で同じロジック (`lib/automationTargets.ts`) で生成して比較する。
+pub fn target_to_key(target: BuiltInTarget) -> String {
+    let slot_str = |s: TplDeckSlot| match s {
+        TplDeckSlot::A => "A",
+        TplDeckSlot::B => "B",
+    };
+    match target {
+        BuiltInTarget::Crossfader => "crossfader".to_string(),
+        BuiltInTarget::MasterVolume => "master_volume".to_string(),
+        BuiltInTarget::DeckVolume { deck } => format!("deck_volume.{}", slot_str(deck)),
+        BuiltInTarget::DeckEqLow { deck } => format!("deck_eq_low.{}", slot_str(deck)),
+        BuiltInTarget::DeckEqMid { deck } => format!("deck_eq_mid.{}", slot_str(deck)),
+        BuiltInTarget::DeckEqHigh { deck } => format!("deck_eq_high.{}", slot_str(deck)),
+        BuiltInTarget::DeckFilter { deck } => format!("deck_filter.{}", slot_str(deck)),
+    }
+}
+
+pub fn key_to_target(key: &str) -> Result<BuiltInTarget, String> {
+    let slot = |s: &str| -> Result<TplDeckSlot, String> {
+        match s {
+            "A" => Ok(TplDeckSlot::A),
+            "B" => Ok(TplDeckSlot::B),
+            other => Err(format!("invalid deck slot: {other}")),
+        }
+    };
+    if key == "crossfader" {
+        return Ok(BuiltInTarget::Crossfader);
+    }
+    if key == "master_volume" {
+        return Ok(BuiltInTarget::MasterVolume);
+    }
+    let (head, tail) = key.split_once('.').ok_or_else(|| format!("invalid target key: {key}"))?;
+    let deck = slot(tail)?;
+    match head {
+        "deck_volume" => Ok(BuiltInTarget::DeckVolume { deck }),
+        "deck_eq_low" => Ok(BuiltInTarget::DeckEqLow { deck }),
+        "deck_eq_mid" => Ok(BuiltInTarget::DeckEqMid { deck }),
+        "deck_eq_high" => Ok(BuiltInTarget::DeckEqHigh { deck }),
+        "deck_filter" => Ok(BuiltInTarget::DeckFilter { deck }),
+        other => Err(format!("unknown target key prefix: {other}")),
     }
 }
 

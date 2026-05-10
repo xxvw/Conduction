@@ -591,6 +591,38 @@ pub fn abort_template(audio: State<'_, AudioHandle>) -> CmdResult {
     send(&audio, AudioCommand::AbortTemplate)
 }
 
+#[tauri::command]
+pub fn override_param(
+    audio: State<'_, AudioHandle>,
+    target_key: String,
+) -> CmdResult {
+    let target = crate::audio_engine::key_to_target(&target_key)?;
+    send(&audio, AudioCommand::OverrideParam { target })
+}
+
+#[tauri::command]
+pub fn resume_param(
+    audio: State<'_, AudioHandle>,
+    target_key: String,
+    duration_beats: Option<f64>,
+) -> CmdResult {
+    let target = crate::audio_engine::key_to_target(&target_key)?;
+    let dur = duration_beats.unwrap_or(4.0).max(0.25);
+    send(
+        &audio,
+        AudioCommand::ResumeParam {
+            target,
+            duration_beats: dur,
+        },
+    )
+}
+
+#[tauri::command]
+pub fn commit_param(audio: State<'_, AudioHandle>, target_key: String) -> CmdResult {
+    let target = crate::audio_engine::key_to_target(&target_key)?;
+    send(&audio, AudioCommand::CommitParam { target })
+}
+
 // ======== Typed Cue (Cue editor / dynamic matching 用) ========
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]

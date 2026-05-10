@@ -1398,6 +1398,76 @@ input[type="range"] {
   font-size: var(--fs-small);
 }
 
+/* --- Override controls (per-parameter OVR/R/C + status dot) --- */
+.override-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.override-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--c-ink-5);
+}
+.override-dot[data-mode="automated"] {
+  background: #8A9BE8;
+  border-color: #8A9BE8;
+}
+.override-dot[data-mode="overridden"] {
+  background: #E8915A;
+  border-color: #E8915A;
+  box-shadow: 0 0 6px rgba(232, 145, 90, 0.6);
+}
+.override-dot[data-mode="resuming"] {
+  background: linear-gradient(90deg, #E8915A, #8A9BE8);
+  border-color: #E8915A;
+  animation: override-pulse 1.2s ease-in-out infinite;
+}
+.override-dot[data-mode="committed"] {
+  background: var(--c-ink-7, #6a6f7a);
+  border-color: var(--c-ink-7, #6a6f7a);
+}
+.override-dot[data-mode="idle"] {
+  background: transparent;
+}
+@keyframes override-pulse {
+  0%, 100% { opacity: 1.0; }
+  50%      { opacity: 0.55; }
+}
+.override-btn {
+  background: transparent;
+  border: 1px solid var(--c-ink-5);
+  color: var(--c-ink-9);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 1px 6px;
+  border-radius: var(--r-2);
+  cursor: pointer;
+}
+.override-btn:hover:not(:disabled) {
+  color: var(--c-ink-11);
+  border-color: var(--c-ink-7);
+}
+.override-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.bus-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: 4px;
+}
+
+/* Crossfader が override 状態なら左 border にカラー帯 */
+.bus .control[data-mode="overridden"] { border-left: 2px solid #E8915A; padding-left: 6px; }
+.bus .control[data-mode="resuming"] { border-left: 2px solid #B0A0DC; padding-left: 6px; }
+.bus .control[data-mode="committed"] { border-left: 2px solid var(--c-ink-7, #6a6f7a); padding-left: 6px; }
+.bus .control[data-mode="automated"] { border-left: 2px solid #8A9BE8; padding-left: 6px; }
+
 /* --- Transport bar (template launcher + status) --- */
 .transport-bar {
   grid-column: 1 / -1;
@@ -1475,6 +1545,16 @@ input[type="range"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.transport-status-overrides {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: var(--r-2);
+  background: rgba(232, 145, 90, 0.18);
+  color: #E8915A;
+  border: 1px solid rgba(232, 145, 90, 0.4);
 }
 .transport-status-progress-text {
   font-family: var(--font-mono);

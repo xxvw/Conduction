@@ -7,6 +7,7 @@ import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigModal } from "@/components/keyconfig/KeyConfigModal";
 import { CuePad } from "@/components/cues/CuePad";
 import { LoopPad } from "@/components/loop/LoopPad";
+import { OverrideControls } from "@/components/override/OverrideControls";
 import { TransportStatusPanel } from "@/components/override/TransportStatusPanel";
 import { MixSuggestion } from "@/components/suggestion/MixSuggestion";
 import { TemplateLauncher } from "@/components/templates/TemplateLauncher";
@@ -214,14 +215,30 @@ export function App() {
   }, []);
 
   // Shift+Esc で実行中テンプレートを Abort (要件 §6.7)
+  // O / R / C で crossfader を Override / Resume / Commit (D2 では crossfader 限定)
   useEffect(() => {
     if (!status?.template) return;
     const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.key === "Escape" && e.shiftKey) {
         e.preventDefault();
         if (window.confirm("Abort template? Current parameters will hold.")) {
           handleAbortTemplate();
         }
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === "o") {
+        e.preventDefault();
+        void ipc.overrideParam("crossfader");
+      } else if (k === "r") {
+        e.preventDefault();
+        void ipc.resumeParam("crossfader", 4);
+      } else if (k === "c") {
+        e.preventDefault();
+        void ipc.commitParam("crossfader");
       }
     };
     window.addEventListener("keydown", onKey);
@@ -572,7 +589,11 @@ function MixScreen({
         onBeatSync={() => onBeatSync("B")}
         onKeySync={() => onKeySync("B")}
       />
-      <BusPanel crossfader={status.crossfader} master={status.master_volume} />
+      <BusPanel
+        crossfader={status.crossfader}
+        master={status.master_volume}
+        templateStatus={status.template}
+      />
       <div className="transport-bar">
         <TemplateLauncher
           presets={templatePresets}
@@ -1031,10 +1052,21 @@ function DeckPanel({
   );
 }
 
-function BusPanel({ crossfader, master }: { crossfader: number; master: number }) {
+function BusPanel({
+  crossfader,
+  master,
+  templateStatus,
+}: {
+  crossfader: number;
+  master: number;
+  templateStatus: import("@/types/mixer").TemplateStatus | null;
+}) {
+  const xfaderMode =
+    templateStatus?.automation_modes.find((m) => m.target_key === "crossfader")
+      ?.mode ?? "idle";
   return (
     <section className="bus">
-      <div className="control">
+      <div className="control" data-mode={xfaderMode}>
         <div className="control-label">
           <span>CROSSFADER</span>
           <span className="value">
@@ -1050,13 +1082,20 @@ function BusPanel({ crossfader, master }: { crossfader: number; master: number }
           value={crossfader}
           onChange={(e) => ipc.setCrossfader(parseFloat(e.target.value))}
         />
-        <button
-          className="btn"
-          style={{ alignSelf: "flex-end", padding: "var(--s-2) var(--s-4)" }}
-          onClick={() => ipc.setCrossfader(0)}
-        >
-          Center
-        </button>
+        <div className="bus-row">
+          <OverrideControls
+            targetKey="crossfader"
+            mode={xfaderMode}
+            templateActive={templateStatus != null}
+          />
+          <button
+            className="btn"
+            style={{ marginLeft: "auto", padding: "var(--s-2) var(--s-4)" }}
+            onClick={() => ipc.setCrossfader(0)}
+          >
+            Center
+          </button>
+        </div>
       </div>
       <div className="control">
         <div className="control-label">

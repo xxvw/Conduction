@@ -158,6 +158,9 @@ fn build_router(state: AppState) -> Router {
         .route("/api/templates/presets", get(list_template_presets))
         .route("/api/templates/start", post(start_template_preset))
         .route("/api/templates/abort", post(abort_template))
+        .route("/api/templates/override", post(override_param))
+        .route("/api/templates/resume", post(resume_param))
+        .route("/api/templates/commit", post(commit_param))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -978,6 +981,57 @@ async fn abort_template(State(s): State<AppState>) -> ApiResult<StatusCode> {
     Ok(StatusCode::OK)
 }
 
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct OverrideRequest {
+    pub target_key: String,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct ResumeRequest {
+    pub target_key: String,
+    pub duration_beats: Option<f64>,
+}
+
+#[utoipa::path(post, path = "/api/templates/override", request_body = OverrideRequest, responses((status = 200)))]
+async fn override_param(
+    State(s): State<AppState>,
+    Json(body): Json<OverrideRequest>,
+) -> ApiResult<StatusCode> {
+    let target = crate::audio_engine::key_to_target(&body.target_key)
+        .map_err(ApiError::bad_request)?;
+    send_audio(&s.audio, AudioCommand::OverrideParam { target })?;
+    Ok(StatusCode::OK)
+}
+
+#[utoipa::path(post, path = "/api/templates/resume", request_body = ResumeRequest, responses((status = 200)))]
+async fn resume_param(
+    State(s): State<AppState>,
+    Json(body): Json<ResumeRequest>,
+) -> ApiResult<StatusCode> {
+    let target = crate::audio_engine::key_to_target(&body.target_key)
+        .map_err(ApiError::bad_request)?;
+    let dur = body.duration_beats.unwrap_or(4.0).max(0.25);
+    send_audio(
+        &s.audio,
+        AudioCommand::ResumeParam {
+            target,
+            duration_beats: dur,
+        },
+    )?;
+    Ok(StatusCode::OK)
+}
+
+#[utoipa::path(post, path = "/api/templates/commit", request_body = OverrideRequest, responses((status = 200)))]
+async fn commit_param(
+    State(s): State<AppState>,
+    Json(body): Json<OverrideRequest>,
+) -> ApiResult<StatusCode> {
+    let target = crate::audio_engine::key_to_target(&body.target_key)
+        .map_err(ApiError::bad_request)?;
+    send_audio(&s.audio, AudioCommand::CommitParam { target })?;
+    Ok(StatusCode::OK)
+}
+
 // ---- Cue dynamic matching ----------------------------------------------
 
 #[utoipa::path(
@@ -1088,6 +1142,9 @@ pub struct HealthResponse {
         list_template_presets,
         start_template_preset,
         abort_template,
+        override_param,
+        resume_param,
+        commit_param,
     ),
     components(schemas(
         HealthResponse,
@@ -1128,6 +1185,9 @@ pub struct HealthResponse {
         TemplatePresetDto,
         StartTemplateRequest,
         crate::audio_engine::TemplateStatus,
+        crate::audio_engine::AutomationModeEntry,
+        OverrideRequest,
+        ResumeRequest,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
