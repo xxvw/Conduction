@@ -166,6 +166,28 @@ pub fn set_cue_send(audio: State<'_, AudioHandle>, deck: String, value: f32) -> 
 }
 
 #[tauri::command]
+pub fn set_key_lock(audio: State<'_, AudioHandle>, deck: String, on: bool) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(&audio, AudioCommand::SetKeyLock { deck: id, on })
+}
+
+#[tauri::command]
+pub fn set_pitch_offset(
+    audio: State<'_, AudioHandle>,
+    deck: String,
+    semitones: f32,
+) -> CmdResult {
+    let id = parse_deck(&deck)?;
+    send(
+        &audio,
+        AudioCommand::SetPitchOffset {
+            deck: id,
+            semitones,
+        },
+    )
+}
+
+#[tauri::command]
 pub fn set_crossfader(audio: State<'_, AudioHandle>, position: f32) -> CmdResult {
     send(&audio, AudioCommand::SetCrossfader(position))
 }

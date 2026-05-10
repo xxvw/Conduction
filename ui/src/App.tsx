@@ -22,6 +22,7 @@ import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
 import { useWaveform } from "@/hooks/useWaveform";
 import { secondsToBeatIndex, snapToNearestBeat } from "@/lib/beats";
+import { shortestSemitoneDiff } from "@/lib/keys";
 import { ipc } from "@/lib/ipc";
 import {
   DEFAULT_ZOOM_SEC,
@@ -140,6 +141,48 @@ export function App() {
     keyHelpOpen,
     handlePickCandidate,
   ]);
+
+  // BEAT SYNC: 反対デッキの effective BPM (track BPM × playback_speed) に
+  // 自分の playback_speed を合わせる。tempo_range の上限を超えるなら clamp。
+  const handleBeatSync = useCallback(
+    (deck: DeckId) => {
+      if (!status) return;
+      const own = deck === "A" ? status.deck_a : status.deck_b;
+      const other = deck === "A" ? status.deck_b : status.deck_a;
+      const ownTrack = own.loaded_path ? trackByPath.get(own.loaded_path) : null;
+      const otherTrack = other.loaded_path
+        ? trackByPath.get(other.loaded_path)
+        : null;
+      if (!ownTrack || !otherTrack || ownTrack.bpm <= 0 || otherTrack.bpm <= 0) {
+        return;
+      }
+      const otherEffBpm = otherTrack.bpm * other.playback_speed;
+      const targetSpeed = otherEffBpm / ownTrack.bpm;
+      const maxAdjust = own.tempo_range_percent / 100;
+      const adjust = Math.max(-1, Math.min(1, (targetSpeed - 1.0) / maxAdjust));
+      void ipc.setTempoAdjust(deck, adjust);
+    },
+    [status, trackByPath],
+  );
+
+  // KEY SYNC: 反対デッキの Camelot key に対する最短半音差を pitch_offset に保存。
+  // Phase 2 で実音 pitch-shift に効く。Phase 1 では値の保存だけ。
+  const handleKeySync = useCallback(
+    (deck: DeckId) => {
+      if (!status) return;
+      const own = deck === "A" ? status.deck_a : status.deck_b;
+      const other = deck === "A" ? status.deck_b : status.deck_a;
+      const ownTrack = own.loaded_path ? trackByPath.get(own.loaded_path) : null;
+      const otherTrack = other.loaded_path
+        ? trackByPath.get(other.loaded_path)
+        : null;
+      if (!ownTrack || !otherTrack) return;
+      const diff = shortestSemitoneDiff(ownTrack.key, otherTrack.key);
+      if (diff == null) return;
+      void ipc.setPitchOffset(deck, diff);
+    },
+    [status, trackByPath],
+  );
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -351,6 +394,8 @@ export function App() {
             hotCuesB={hotCuesB}
             cuesA={cuesA}
             cuesB={cuesB}
+            onBeatSync={handleBeatSync}
+            onKeySync={handleKeySync}
           />
         )}
         {screen === "library" && (
@@ -423,6 +468,8 @@ function MixScreen({
   hotCuesB,
   cuesA,
   cuesB,
+  onBeatSync,
+  onKeySync,
 }: {
   status: MixerSnapshot | null;
   trackByPath: Map<string, TrackSummary>;
@@ -435,6 +482,8 @@ function MixScreen({
   hotCuesB: ReturnType<typeof useHotCues>;
   cuesA: ReturnType<typeof useCues>;
   cuesB: ReturnType<typeof useCues>;
+  onBeatSync: (deck: DeckId) => void;
+  onKeySync: (deck: DeckId) => void;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
   return (
@@ -448,6 +497,8 @@ function MixScreen({
         beats={beatsA}
         hotCues={hotCuesA}
         cues={cuesA}
+        onBeatSync={() => onBeatSync("A")}
+        onKeySync={() => onKeySync("A")}
       />
       <DeckPanel
         snapshot={status.deck_b}
@@ -458,6 +509,8 @@ function MixScreen({
         beats={beatsB}
         hotCues={hotCuesB}
         cues={cuesB}
+        onBeatSync={() => onBeatSync("B")}
+        onKeySync={() => onKeySync("B")}
       />
       <BusPanel crossfader={status.crossfader} master={status.master_volume} />
     </>
@@ -490,6 +543,8 @@ function DeckPanel({
   beats,
   hotCues,
   cues,
+  onBeatSync,
+  onKeySync,
 }: {
   snapshot: DeckSnapshot;
   trackByPath: Map<string, TrackSummary>;
@@ -499,6 +554,8 @@ function DeckPanel({
   beats: import("@/types/beat").BeatDto[];
   hotCues: ReturnType<typeof useHotCues>;
   cues: ReturnType<typeof useCues>;
+  onBeatSync: () => void;
+  onKeySync: () => void;
 }) {
   const deck: DeckId = snapshot.id;
   const loadedTrack = snapshot.loaded_path
@@ -803,6 +860,35 @@ function DeckPanel({
               ±{pct}%
             </button>
           ))}
+          <button
+            className="chip sync-chip"
+            aria-pressed={snapshot.key_lock}
+            onClick={() => void ipc.setKeyLock(deck, !snapshot.key_lock)}
+            title="Master Tempo (keylock) — Phase 1: state only, DSP arrives in Phase 2"
+          >
+            MT
+          </button>
+          <button
+            className="chip sync-chip"
+            onClick={onBeatSync}
+            title="Match this deck's effective BPM to the opposite deck"
+          >
+            BEAT SYNC
+          </button>
+          <button
+            className="chip sync-chip"
+            onClick={onKeySync}
+            title="Compute semitone offset to match opposite deck's Camelot key (Phase 1: stored only)"
+          >
+            KEY SYNC
+            {snapshot.pitch_offset_semitones !== 0 && (
+              <span className="chip-sub">
+                {" "}
+                {snapshot.pitch_offset_semitones > 0 ? "+" : ""}
+                {snapshot.pitch_offset_semitones.toFixed(0)}st
+              </span>
+            )}
+          </button>
           <button
             className="btn"
             style={{ marginLeft: "auto", padding: "var(--s-2) var(--s-3)" }}

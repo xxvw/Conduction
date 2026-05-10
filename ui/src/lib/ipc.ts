@@ -66,6 +66,12 @@ export const ipc = {
   setCueSend(deck: DeckId, value: number) {
     return call<void>("set_cue_send", { deck, value });
   },
+  setKeyLock(deck: DeckId, on: boolean) {
+    return call<void>("set_key_lock", { deck, on });
+  },
+  setPitchOffset(deck: DeckId, semitones: number) {
+    return call<void>("set_pitch_offset", { deck, semitones });
+  },
   setCrossfader(position: number) {
     return call<void>("set_crossfader", { position });
   },

@@ -60,6 +60,8 @@ pub fn run() {
             commands::set_echo,
             commands::set_reverb,
             commands::set_cue_send,
+            commands::set_key_lock,
+            commands::set_pitch_offset,
             commands::list_audio_devices,
             commands::set_crossfader,
             commands::set_channel_volume,

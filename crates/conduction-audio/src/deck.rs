@@ -107,6 +107,14 @@ pub struct Deck {
     /// PFL 送出量（0..1）。1 で Cue デバイスへ流れ、0 で送らない。
     /// Cue 出力デバイスが無い場合は値を保持するだけで何も起きない。
     cue_send: f32,
+
+    // --- Master Tempo / Pitch (Phase 1: 状態保持のみ。Phase 2 で DSP 適用) ---
+    /// `true` なら playback_speed を変えてもピッチを保つ (キーロック)。
+    /// 現状は state を持つだけで、実際のピッチ補正 (time-stretch) は Phase 2 で導入する。
+    key_lock: bool,
+    /// 半音単位のピッチオフセット。KEY SYNC が書き込む。
+    /// 同じく Phase 2 で pitch-shift DSP に渡る。現状は記録だけ。
+    pitch_offset_semitones: f32,
 }
 
 /// `Deck` のループ状態。`start` / `end` は `None` 時は未設定。
@@ -155,7 +163,27 @@ impl Deck {
             loop_state: LoopState::default(),
             dsp_params: DspParams::new_arc(),
             cue_send: 0.0,
+            key_lock: false,
+            pitch_offset_semitones: 0.0,
         })
+    }
+
+    pub fn key_lock(&self) -> bool {
+        self.key_lock
+    }
+
+    pub fn set_key_lock(&mut self, on: bool) {
+        self.key_lock = on;
+        // Phase 2: ここで Source チェーンの time-stretch を有効化する
+    }
+
+    pub fn pitch_offset_semitones(&self) -> f32 {
+        self.pitch_offset_semitones
+    }
+
+    pub fn set_pitch_offset_semitones(&mut self, semitones: f32) {
+        self.pitch_offset_semitones = semitones.clamp(-12.0, 12.0);
+        // Phase 2: ここで Source チェーンの pitch-shift パラメータを更新する
     }
 
     /// DSP パラメータの共有ハンドル。UI スレッドが値を書き換える。

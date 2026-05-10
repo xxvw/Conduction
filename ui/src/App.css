@@ -1086,6 +1086,23 @@ input[type="range"] {
   color: var(--c-ink-0);
   border-color: var(--c-accent);
 }
+.chip.sync-chip {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  padding: var(--s-2) var(--s-3);
+}
+.chip.sync-chip:hover {
+  border-color: var(--c-accent);
+  color: var(--c-ink-11);
+}
+.chip.sync-chip[aria-pressed="true"] {
+  background: var(--c-accent);
+  color: var(--c-ink-0);
+}
+.chip-sub {
+  margin-left: 2px;
+  opacity: 0.7;
+}
 
 .state-badge {
   display: inline-block;

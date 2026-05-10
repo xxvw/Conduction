@@ -138,6 +138,8 @@ fn build_router(state: AppState) -> Router {
         .route("/api/decks/:id/echo", post(set_echo))
         .route("/api/decks/:id/reverb", post(set_reverb))
         .route("/api/decks/:id/cue-send", post(set_cue_send))
+        .route("/api/decks/:id/key-lock", post(set_key_lock))
+        .route("/api/decks/:id/pitch-offset", post(set_pitch_offset))
         .route("/api/decks/:id/channel-volume", post(set_channel_volume))
         .route("/api/decks/:id/tempo-adjust", post(set_tempo_adjust))
         .route("/api/decks/:id/tempo-range", post(set_tempo_range))
@@ -626,6 +628,44 @@ async fn set_cue_send(
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct KeyLockRequest {
+    pub on: bool,
+}
+
+#[utoipa::path(post, path = "/api/decks/{id}/key-lock", request_body = KeyLockRequest, responses((status = 200)))]
+async fn set_key_lock(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<KeyLockRequest>,
+) -> ApiResult<StatusCode> {
+    let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
+    send_audio(&s.audio, AudioCommand::SetKeyLock { deck, on: body.on })?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct PitchOffsetRequest {
+    pub semitones: f32,
+}
+
+#[utoipa::path(post, path = "/api/decks/{id}/pitch-offset", request_body = PitchOffsetRequest, responses((status = 200)))]
+async fn set_pitch_offset(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<PitchOffsetRequest>,
+) -> ApiResult<StatusCode> {
+    let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
+    send_audio(
+        &s.audio,
+        AudioCommand::SetPitchOffset {
+            deck,
+            semitones: body.semitones,
+        },
+    )?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct VolumeRequest {
     pub volume: f32,
 }
@@ -978,6 +1018,8 @@ pub struct HealthResponse {
         set_echo,
         set_reverb,
         set_cue_send,
+        set_key_lock,
+        set_pitch_offset,
         set_channel_volume,
         set_tempo_adjust,
         set_tempo_range,
@@ -1016,6 +1058,8 @@ pub struct HealthResponse {
         TempoAdjustRequest,
         TempoRangeRequest,
         CrossfaderRequest,
+        KeyLockRequest,
+        PitchOffsetRequest,
         VideoSearchResult,
         AudioFormat,
         YtAvailableResponse,

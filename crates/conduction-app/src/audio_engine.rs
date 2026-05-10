@@ -39,6 +39,8 @@ pub enum AudioCommand {
     SetEcho { deck: DeckId, wet: f32, time_ms: f32, feedback: f32 },
     SetReverb { deck: DeckId, wet: f32, room: f32 },
     SetCueSend { deck: DeckId, value: f32 },
+    SetKeyLock { deck: DeckId, on: bool },
+    SetPitchOffset { deck: DeckId, semitones: f32 },
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -68,6 +70,8 @@ pub struct DeckSnapshot {
     pub reverb_room: f32,
     pub cue_send: f32,
     pub has_cue_output: bool,
+    pub key_lock: bool,
+    pub pitch_offset_semitones: f32,
 }
 
 /// Mixer 全体のスナップショット。
@@ -243,6 +247,12 @@ fn apply_command(
         AudioCommand::SetCueSend { deck, value } => {
             mixer.set_cue_send(deck, value);
         }
+        AudioCommand::SetKeyLock { deck, on } => {
+            mixer.deck(deck).set_key_lock(on);
+        }
+        AudioCommand::SetPitchOffset { deck, semitones } => {
+            mixer.deck(deck).set_pitch_offset_semitones(semitones);
+        }
     }
 }
 
@@ -296,6 +306,8 @@ fn build_deck_snapshot(
         reverb_room: dsp.reverb_room(),
         cue_send: deck.cue_send(),
         has_cue_output: deck.has_cue_output(),
+        key_lock: deck.key_lock(),
+        pitch_offset_semitones: deck.pitch_offset_semitones(),
     }
 }
 
@@ -380,6 +392,8 @@ fn empty_deck_snapshot(id: &'static str) -> DeckSnapshot {
         reverb_room: 0.5,
         cue_send: 0.0,
         has_cue_output: false,
+        key_lock: false,
+        pitch_offset_semitones: 0.0,
     }
 }
 

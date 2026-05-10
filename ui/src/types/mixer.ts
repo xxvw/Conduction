@@ -29,6 +29,8 @@ export interface DeckSnapshot {
   reverb_room: number;
   cue_send: number;
   has_cue_output: boolean;
+  key_lock: boolean;
+  pitch_offset_semitones: number;
 }
 
 export type EqBand = "low" | "mid" | "high";
