@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::thread;
 
 use conduction_analysis::{
-    decode_to_pcm, estimate_beatgrid, generate_waveform, DEFAULT_WAVEFORM_BINS,
+    decode_to_pcm, estimate_beatgrid, estimate_key, generate_waveform, DEFAULT_WAVEFORM_BINS,
 };
 use conduction_core::TrackId;
 use conduction_download::{search as yt_search, AudioFormat, ProgressEvent, VideoSearchResult};
@@ -108,11 +108,16 @@ fn analyze_internal(
     let total_sec = audio.duration_sec();
     let wf = generate_waveform(&audio, DEFAULT_WAVEFORM_BINS);
     let estimate = estimate_beatgrid(&audio);
+    let key_estimate = estimate_key(&audio);
     let mut lib = library.lock();
     lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())?;
     if let Some(est) = estimate {
         let beats = est.beats(total_sec);
         lib.save_track_analysis(track_id, est.bpm, &beats)
+            .map_err(|e| e.to_string())?;
+    }
+    if let Some(k) = key_estimate {
+        lib.save_track_key(track_id, k.key)
             .map_err(|e| e.to_string())?;
     }
     Ok(())

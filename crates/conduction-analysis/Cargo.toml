@@ -12,6 +12,7 @@ description = "Track analysis (BPM, key, energy, structure, waveform) for Conduc
 conduction-core.workspace = true
 symphonia.workspace = true
 biquad.workspace = true
+rustfft.workspace = true
 serde.workspace = true
 tracing.workspace = true
 thiserror.workspace = true

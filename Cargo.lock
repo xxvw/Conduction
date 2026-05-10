@@ -629,6 +629,7 @@ version = "0.1.0"
 dependencies = [
  "biquad",
  "conduction-core",
+ "rustfft",
  "serde",
  "symphonia",
  "thiserror 1.0.69",

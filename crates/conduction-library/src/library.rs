@@ -253,6 +253,31 @@ impl Library {
         Ok(())
     }
 
+    /// Krumhansl-Schmuckler などのキー検出結果を保存する。BPM 解析とは独立。
+    pub fn save_track_key(
+        &mut self,
+        track_id: TrackId,
+        key: conduction_core::Key,
+    ) -> LibraryResult<()> {
+        let now = dt_to_str(Utc::now());
+        let affected = self.conn.execute(
+            "UPDATE tracks SET key_camelot_number = ?2, key_mode = ?3, updated_at = ?4
+             WHERE id = ?1",
+            params![
+                track_id.as_uuid().to_string(),
+                key.camelot_number as i64,
+                key_mode_to_i64(key.mode),
+                now,
+            ],
+        )?;
+        if affected == 0 {
+            return Err(LibraryError::Unsupported(format!(
+                "track not found for key save: {track_id}"
+            )));
+        }
+        Ok(())
+    }
+
     /// 既存のビートグリッドを差し替える（一括 upsert）。
     pub fn replace_beatgrid(
         &mut self,
