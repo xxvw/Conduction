@@ -397,6 +397,12 @@ fn current_mixer_value(mixer: &mut Mixer, target: BuiltInTarget) -> f32 {
         BuiltInTarget::DeckFilter { deck } => {
             mixer.deck(to_deck(deck)).dsp_params().filter()
         }
+        BuiltInTarget::DeckEchoWet { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().echo_wet()
+        }
+        BuiltInTarget::DeckReverbWet { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().reverb_wet()
+        }
     }
 }
 
@@ -424,6 +430,12 @@ fn apply_template_value(mixer: &mut Mixer, target: BuiltInTarget, value: f32) {
         }
         BuiltInTarget::DeckFilter { deck } => {
             mixer.deck(to_deck(deck)).dsp_params().set_filter(value);
+        }
+        BuiltInTarget::DeckEchoWet { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().set_echo_wet(value);
+        }
+        BuiltInTarget::DeckReverbWet { deck } => {
+            mixer.deck(to_deck(deck)).dsp_params().set_reverb_wet(value);
         }
     }
 }
@@ -495,6 +507,8 @@ pub fn target_to_key(target: BuiltInTarget) -> String {
         BuiltInTarget::DeckEqMid { deck } => format!("deck_eq_mid.{}", slot_str(deck)),
         BuiltInTarget::DeckEqHigh { deck } => format!("deck_eq_high.{}", slot_str(deck)),
         BuiltInTarget::DeckFilter { deck } => format!("deck_filter.{}", slot_str(deck)),
+        BuiltInTarget::DeckEchoWet { deck } => format!("deck_echo_wet.{}", slot_str(deck)),
+        BuiltInTarget::DeckReverbWet { deck } => format!("deck_reverb_wet.{}", slot_str(deck)),
     }
 }
 
@@ -520,6 +534,8 @@ pub fn key_to_target(key: &str) -> Result<BuiltInTarget, String> {
         "deck_eq_mid" => Ok(BuiltInTarget::DeckEqMid { deck }),
         "deck_eq_high" => Ok(BuiltInTarget::DeckEqHigh { deck }),
         "deck_filter" => Ok(BuiltInTarget::DeckFilter { deck }),
+        "deck_echo_wet" => Ok(BuiltInTarget::DeckEchoWet { deck }),
+        "deck_reverb_wet" => Ok(BuiltInTarget::DeckReverbWet { deck }),
         other => Err(format!("unknown target key prefix: {other}")),
     }
 }

@@ -1027,7 +1027,13 @@ function DeckPanel({
         </div>
       </div>
 
-      <FxPad deckId={deck} snapshot={snapshot} />
+      <FxPad
+        deckId={deck}
+        snapshot={snapshot}
+        mixerStatus={mixerStatus}
+        focusedTarget={focusedTarget}
+        onFocus={onFocus}
+      />
 
       <LoopPad
         deckId={deck}

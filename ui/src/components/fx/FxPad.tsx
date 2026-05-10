@@ -1,21 +1,50 @@
 import { ipc } from "@/lib/ipc";
-import type { DeckId, DeckSnapshot } from "@/types/mixer";
+import type {
+  AutomationModeKind,
+  DeckId,
+  DeckSnapshot,
+  MixerSnapshot,
+} from "@/types/mixer";
 
 interface FxPadProps {
   deckId: DeckId;
   snapshot: DeckSnapshot;
+  mixerStatus: MixerSnapshot | null;
+  focusedTarget: string;
+  onFocus: (key: string) => void;
+}
+
+function lookupMode(
+  status: MixerSnapshot | null,
+  key: string,
+): AutomationModeKind {
+  return (
+    status?.template?.automation_modes.find((m) => m.target_key === key)?.mode ??
+    "idle"
+  );
 }
 
 const KILL_DB = -40; // Kill 押下時に適用するゲイン
 const MAX_DB = 6;
 const MIN_DB = -26;
 
-export function FxPad({ deckId, snapshot }: FxPadProps) {
+export function FxPad({
+  deckId,
+  snapshot,
+  mixerStatus,
+  focusedTarget,
+  onFocus,
+}: FxPadProps) {
   const isKill = (db: number) => db <= KILL_DB + 0.5;
 
   const handleEq = (band: "low" | "mid" | "high", db: number) => {
     void ipc.setEq(deckId, band, db);
   };
+
+  const eqLowKey = `deck_eq_low.${deckId}`;
+  const eqMidKey = `deck_eq_mid.${deckId}`;
+  const eqHighKey = `deck_eq_high.${deckId}`;
+  const filterKey = `deck_filter.${deckId}`;
 
   return (
     <div className="fx-pad" data-deck={deckId} aria-label={`Effects for Deck ${deckId}`}>
@@ -27,6 +56,10 @@ export function FxPad({ deckId, snapshot }: FxPadProps) {
           onChange={(v) => handleEq("high", v)}
           isKill={isKill(snapshot.eq_high_db)}
           onKill={() => handleEq("high", isKill(snapshot.eq_high_db) ? 0 : KILL_DB)}
+          targetKey={eqHighKey}
+          mode={lookupMode(mixerStatus, eqHighKey)}
+          focused={focusedTarget === eqHighKey}
+          onFocus={() => onFocus(eqHighKey)}
         />
         <EqRow
           label="MID"
@@ -34,6 +67,10 @@ export function FxPad({ deckId, snapshot }: FxPadProps) {
           onChange={(v) => handleEq("mid", v)}
           isKill={isKill(snapshot.eq_mid_db)}
           onKill={() => handleEq("mid", isKill(snapshot.eq_mid_db) ? 0 : KILL_DB)}
+          targetKey={eqMidKey}
+          mode={lookupMode(mixerStatus, eqMidKey)}
+          focused={focusedTarget === eqMidKey}
+          onFocus={() => onFocus(eqMidKey)}
         />
         <EqRow
           label="LOW"
@@ -41,10 +78,20 @@ export function FxPad({ deckId, snapshot }: FxPadProps) {
           onChange={(v) => handleEq("low", v)}
           isKill={isKill(snapshot.eq_low_db)}
           onKill={() => handleEq("low", isKill(snapshot.eq_low_db) ? 0 : KILL_DB)}
+          targetKey={eqLowKey}
+          mode={lookupMode(mixerStatus, eqLowKey)}
+          focused={focusedTarget === eqLowKey}
+          onFocus={() => onFocus(eqLowKey)}
         />
       </div>
 
-      <div className="fx-section">
+      <div
+        className="fx-section param-control"
+        data-target={filterKey}
+        data-mode={lookupMode(mixerStatus, filterKey)}
+        data-focused={focusedTarget === filterKey}
+        onClick={() => onFocus(filterKey)}
+      >
         <div className="fx-section-title">FILTER</div>
         <div className="fx-knob-row">
           <input
@@ -58,7 +105,10 @@ export function FxPad({ deckId, snapshot }: FxPadProps) {
           <button
             className="fx-mini-btn"
             title="Reset filter"
-            onClick={() => void ipc.setFilter(deckId, 0)}
+            onClick={(e) => {
+              e.stopPropagation();
+              void ipc.setFilter(deckId, 0);
+            }}
           >
             ⟲
           </button>
@@ -138,15 +188,29 @@ function EqRow({
   onChange,
   isKill,
   onKill,
+  targetKey,
+  mode,
+  focused,
+  onFocus,
 }: {
   label: string;
   value: number;
   onChange: (db: number) => void;
   isKill: boolean;
   onKill: () => void;
+  targetKey: string;
+  mode: AutomationModeKind;
+  focused: boolean;
+  onFocus: () => void;
 }) {
   return (
-    <div className="fx-row eq-row">
+    <div
+      className="fx-row eq-row param-control"
+      data-target={targetKey}
+      data-mode={mode}
+      data-focused={focused}
+      onClick={onFocus}
+    >
       <span className="fx-row-label">{label}</span>
       <input
         type="range"
@@ -161,7 +225,10 @@ function EqRow({
         className="eq-kill"
         data-active={isKill || undefined}
         title="Kill (silence this band)"
-        onClick={onKill}
+        onClick={(e) => {
+          e.stopPropagation();
+          onKill();
+        }}
       >
         K
       </button>

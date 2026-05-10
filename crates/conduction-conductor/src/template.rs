@@ -56,6 +56,8 @@ pub enum BuiltInTarget {
     DeckEqMid { deck: DeckSlot },
     DeckEqHigh { deck: DeckSlot },
     DeckFilter { deck: DeckSlot },
+    DeckEchoWet { deck: DeckSlot },
+    DeckReverbWet { deck: DeckSlot },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
@@ -155,9 +157,199 @@ impl Template {
         }
     }
 
-    /// 内蔵プリセット一覧。今は Long EQ Mix のみ。今後 Quick Cut / Breakdown Swap / Echo Out / Instant Swap を追加する。
+    /// Quick Cut (4 bars = 16 beats) — 短い切り替え。HipHop・ドロップ合わせ向け。
+    /// クロスフェーダーを EaseIn で 16 拍かけて A → B、低音は触らない。
+    pub fn quick_cut() -> Self {
+        Self {
+            id: "preset.quick_cut".into(),
+            name: "Quick Cut".into(),
+            duration_beats: 16.0,
+            tracks: vec![AutomationTrack {
+                target: BuiltInTarget::Crossfader,
+                keyframes: vec![
+                    Keyframe {
+                        position: TimePosition::Beats(0.0),
+                        value: -1.0,
+                        curve: CurveType::EaseIn,
+                    },
+                    Keyframe {
+                        position: TimePosition::Beats(16.0),
+                        value: 1.0,
+                        curve: CurveType::Linear,
+                    },
+                ],
+            }],
+        }
+    }
+
+    /// Breakdown Swap (16 bars = 64 beats) — ブレイクダウン区間で入れ替え。EDM・フェス向け。
+    /// 前半 16 拍は A 主体、中間 32 拍で「low EQ swap」、後半 16 拍は B 主体。
+    pub fn breakdown_swap() -> Self {
+        Self {
+            id: "preset.breakdown_swap".into(),
+            name: "Breakdown Swap".into(),
+            duration_beats: 64.0,
+            tracks: vec![
+                AutomationTrack {
+                    target: BuiltInTarget::Crossfader,
+                    keyframes: vec![
+                        Keyframe {
+                            position: TimePosition::Beats(0.0),
+                            value: -1.0,
+                            curve: CurveType::Hold,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(16.0),
+                            value: -1.0,
+                            curve: CurveType::EaseInOut,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(48.0),
+                            value: 1.0,
+                            curve: CurveType::Linear,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(64.0),
+                            value: 1.0,
+                            curve: CurveType::Linear,
+                        },
+                    ],
+                },
+                AutomationTrack {
+                    target: BuiltInTarget::DeckEqLow { deck: DeckSlot::A },
+                    keyframes: vec![
+                        Keyframe {
+                            position: TimePosition::Beats(0.0),
+                            value: 0.0,
+                            curve: CurveType::Hold,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(16.0),
+                            value: 0.0,
+                            curve: CurveType::EaseIn,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(32.0),
+                            value: -26.0,
+                            curve: CurveType::Hold,
+                        },
+                    ],
+                },
+                AutomationTrack {
+                    target: BuiltInTarget::DeckEqLow { deck: DeckSlot::B },
+                    keyframes: vec![
+                        Keyframe {
+                            position: TimePosition::Beats(0.0),
+                            value: -26.0,
+                            curve: CurveType::Hold,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(32.0),
+                            value: -26.0,
+                            curve: CurveType::EaseOut,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(48.0),
+                            value: 0.0,
+                            curve: CurveType::Linear,
+                        },
+                    ],
+                },
+            ],
+        }
+    }
+
+    /// Echo Out (8 bars = 32 beats) — エコーをかけてフェードアウト。アンビエント・セット区切り向け。
+    /// Deck A に echo を立ち上げつつ、後半でチャンネルボリュームを 0 まで落とす。
+    pub fn echo_out() -> Self {
+        Self {
+            id: "preset.echo_out".into(),
+            name: "Echo Out".into(),
+            duration_beats: 32.0,
+            tracks: vec![
+                AutomationTrack {
+                    target: BuiltInTarget::DeckEchoWet { deck: DeckSlot::A },
+                    keyframes: vec![
+                        Keyframe {
+                            position: TimePosition::Beats(0.0),
+                            value: 0.0,
+                            curve: CurveType::Linear,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(16.0),
+                            value: 0.55,
+                            curve: CurveType::EaseInOut,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(32.0),
+                            value: 0.85,
+                            curve: CurveType::Linear,
+                        },
+                    ],
+                },
+                AutomationTrack {
+                    target: BuiltInTarget::DeckVolume { deck: DeckSlot::A },
+                    keyframes: vec![
+                        Keyframe {
+                            position: TimePosition::Beats(0.0),
+                            value: 1.0,
+                            curve: CurveType::Hold,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(16.0),
+                            value: 1.0,
+                            curve: CurveType::EaseInOut,
+                        },
+                        Keyframe {
+                            position: TimePosition::Beats(32.0),
+                            value: 0.0,
+                            curve: CurveType::Linear,
+                        },
+                    ],
+                },
+            ],
+        }
+    }
+
+    /// Instant Swap (1 bar = 4 beats) — 緊急用の即時切替。失敗リカバリー向け。
+    /// 3 拍目までは A を保持、最後の 1 拍で一気に B にスナップ。
+    pub fn instant_swap() -> Self {
+        Self {
+            id: "preset.instant_swap".into(),
+            name: "Instant Swap".into(),
+            duration_beats: 4.0,
+            tracks: vec![AutomationTrack {
+                target: BuiltInTarget::Crossfader,
+                keyframes: vec![
+                    Keyframe {
+                        position: TimePosition::Beats(0.0),
+                        value: -1.0,
+                        curve: CurveType::Step,
+                    },
+                    Keyframe {
+                        position: TimePosition::Beats(3.0),
+                        value: -1.0,
+                        curve: CurveType::Linear,
+                    },
+                    Keyframe {
+                        position: TimePosition::Beats(4.0),
+                        value: 1.0,
+                        curve: CurveType::Linear,
+                    },
+                ],
+            }],
+        }
+    }
+
+    /// 内蔵プリセット一覧 (要件 §6.6 のプリセット 5 種)。
     pub fn all_presets() -> Vec<Template> {
-        vec![Self::long_eq_mix()]
+        vec![
+            Self::long_eq_mix(),
+            Self::quick_cut(),
+            Self::breakdown_swap(),
+            Self::echo_out(),
+            Self::instant_swap(),
+        ]
     }
 }
 
