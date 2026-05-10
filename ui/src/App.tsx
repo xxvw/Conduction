@@ -114,16 +114,18 @@ export function App() {
 
   // Enter で 1 位選択 / Esc で dismiss (要件 §6.5)
   useEffect(() => {
-    if (matchCandidates.length === 0 || suggestionDismissed) return;
+    if (suggestionDismissed || activeTrackSummary == null) return;
     const onKey = (e: KeyboardEvent) => {
       if (keyHelpOpen) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.key === "Enter") {
-        e.preventDefault();
         const top = matchCandidates[0];
-        if (top) void handlePickCandidate(top);
+        if (top) {
+          e.preventDefault();
+          void handlePickCandidate(top);
+        }
       } else if (e.key === "Escape") {
         e.preventDefault();
         setSuggestionDismissed(true);
@@ -131,7 +133,13 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [matchCandidates, suggestionDismissed, keyHelpOpen, handlePickCandidate]);
+  }, [
+    matchCandidates,
+    suggestionDismissed,
+    activeTrackSummary,
+    keyHelpOpen,
+    handlePickCandidate,
+  ]);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -382,10 +390,20 @@ export function App() {
         open={
           screen === "mix" &&
           !suggestionDismissed &&
-          matchCandidates.length > 0
+          activeTrackSummary != null
         }
         targetDeck={oppositeDeck}
         candidates={matchCandidates}
+        activeStatus={
+          activeTrackSummary
+            ? {
+                bpm:
+                  activeTrackSummary.bpm *
+                  (activeSnapshot?.playback_speed ?? 1),
+                key: activeTrackSummary.key,
+              }
+            : null
+        }
         onPick={(c) => void handlePickCandidate(c)}
         onDismiss={() => setSuggestionDismissed(true)}
       />

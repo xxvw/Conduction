@@ -6,6 +6,8 @@ interface MixSuggestionProps {
   /** どのデッキに「対して」候補を提案しているか (= 反対デッキ)。 */
   targetDeck: DeckId;
   candidates: MatchCandidate[];
+  /** 候補 0 のときの切り分け用に、アクティブデッキ側の BPM / Key を表示。 */
+  activeStatus: { bpm: number; key: string } | null;
   onPick: (c: MatchCandidate) => void;
   onDismiss: () => void;
 }
@@ -14,6 +16,7 @@ export function MixSuggestion({
   open,
   targetDeck,
   candidates,
+  activeStatus,
   onPick,
   onDismiss,
 }: MixSuggestionProps) {
@@ -38,7 +41,16 @@ export function MixSuggestion({
         </button>
       </header>
       {candidates.length === 0 ? (
-        <p className="mix-suggestion-empty">No compatible cues yet.</p>
+        <div className="mix-suggestion-empty">
+          <p>No compatible cues yet.</p>
+          {activeStatus && (
+            <p className="mix-suggestion-empty-sub">
+              Active: <code>{activeStatus.bpm.toFixed(1)} BPM</code> ·{" "}
+              <code>{activeStatus.key || "—"}</code> · need an Entry-role cue
+              within ±8 BPM and Camelot-compatible.
+            </p>
+          )}
+        </div>
       ) : (
         <ul className="mix-suggestion-list">
           {candidates.map((c, idx) => (

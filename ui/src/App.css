@@ -1434,9 +1434,26 @@ input[type="range"] {
 }
 .mix-suggestion-close:hover { color: var(--c-ink-11); background: var(--c-ink-3); }
 .mix-suggestion-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mix-suggestion-empty p {
   margin: 0;
   font-size: var(--fs-small);
   color: var(--c-ink-9);
+}
+.mix-suggestion-empty-sub {
+  font-size: var(--fs-micro) !important;
+  color: var(--c-ink-7) !important;
+  line-height: 1.4;
+}
+.mix-suggestion-empty-sub code {
+  font-family: var(--font-mono);
+  color: var(--c-ink-11);
+  background: var(--c-ink-3);
+  padding: 0 4px;
+  border-radius: 2px;
 }
 .mix-suggestion-list {
   list-style: none;
