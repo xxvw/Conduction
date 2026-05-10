@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import "./App.css";
 import { FxPad } from "@/components/fx/FxPad";
@@ -7,6 +7,7 @@ import { HotCuePad } from "@/components/hotcue/HotCuePad";
 import { KeyConfigModal } from "@/components/keyconfig/KeyConfigModal";
 import { CuePad } from "@/components/cues/CuePad";
 import { LoopPad } from "@/components/loop/LoopPad";
+import { MixSuggestion } from "@/components/suggestion/MixSuggestion";
 import { PerfHud } from "@/components/perf/PerfHud";
 import { WaveformView } from "@/components/waveform/WaveformView";
 import { WaveformZoomView } from "@/components/waveform/WaveformZoomView";
@@ -15,6 +16,7 @@ import { useCues } from "@/hooks/useCues";
 import { useHotCues } from "@/hooks/useHotCues";
 import { useInterpolatedPosition } from "@/hooks/useInterpolatedPosition";
 import { useKeyBindings } from "@/hooks/useKeyBindings";
+import { useMatchCandidates } from "@/hooks/useMatchCandidates";
 import { useMixerStatus } from "@/hooks/useMixerStatus";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTracks } from "@/hooks/useTracks";
@@ -41,6 +43,7 @@ export function App() {
   const [activeDeck, setActiveDeck] = useState<DeckId>("A");
   const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
   const [keyHelpOpen, setKeyHelpOpen] = useState<boolean>(false);
+  const [suggestionDismissed, setSuggestionDismissed] = useState<boolean>(false);
   const status = useMixerStatus(100);
   const tracksHandle = useTracks();
   const keyBindings = useKeyBindings();
@@ -66,6 +69,69 @@ export function App() {
   const hotCuesB = useHotCues(deckBTrackId);
   const cuesA = useCues(deckATrackId);
   const cuesB = useCues(deckBTrackId);
+
+  // ----- MixSuggestion (Cue 動的マッチング) -----
+  const activeSnapshot = activeDeck === "A" ? status?.deck_a : status?.deck_b;
+  const activeTrackSummary = activeSnapshot?.loaded_path
+    ? trackByPath.get(activeSnapshot.loaded_path) ?? null
+    : null;
+  const activeTrackId = activeDeck === "A" ? deckATrackId : deckBTrackId;
+  const oppositeDeck: DeckId = activeDeck === "A" ? "B" : "A";
+
+  const matchCandidates = useMatchCandidates({
+    bpm: activeTrackSummary
+      ? activeTrackSummary.bpm * (activeSnapshot?.playback_speed ?? 1)
+      : 0,
+    keyCamelot:
+      (activeTrackSummary?.bpm ?? 0) > 0 ? activeTrackSummary?.key ?? "" : "",
+    energy: activeTrackSummary?.energy ?? 0.5,
+    excludeTrackId: activeTrackId,
+    enabled: !!activeTrackSummary && !suggestionDismissed,
+  });
+
+  // アクティブトラックが変わると dismiss を解除して再提示
+  useEffect(() => {
+    setSuggestionDismissed(false);
+  }, [activeTrackId]);
+
+  const handlePickCandidate = useCallback(
+    async (c: import("@/lib/ipc").MatchCandidate) => {
+      try {
+        await ipc.loadTrack(oppositeDeck, c.track.path);
+        const seekSec =
+          (c.cue.position_beats * 60) / Math.max(1, c.cue.bpm_at_cue);
+        // ロード直後は decoder が立ち上がる僅かな遅延があるので、念のため await を 1 拍置く
+        await new Promise((r) => setTimeout(r, 200));
+        await ipc.seek(oppositeDeck, seekSec);
+        setSuggestionDismissed(true);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("pick candidate failed", e);
+      }
+    },
+    [oppositeDeck],
+  );
+
+  // Enter で 1 位選択 / Esc で dismiss (要件 §6.5)
+  useEffect(() => {
+    if (matchCandidates.length === 0 || suggestionDismissed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (keyHelpOpen) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const top = matchCandidates[0];
+        if (top) void handlePickCandidate(top);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setSuggestionDismissed(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [matchCandidates, suggestionDismissed, keyHelpOpen, handlePickCandidate]);
 
   const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
     void ipc.loadTrack(deck, path);
@@ -310,6 +376,18 @@ export function App() {
         bindings={keyBindings.bindings}
         activeDeck={activeDeck}
         zoomWindowSec={zoomWindowSec}
+      />
+
+      <MixSuggestion
+        open={
+          screen === "mix" &&
+          !suggestionDismissed &&
+          matchCandidates.length > 0
+        }
+        targetDeck={oppositeDeck}
+        candidates={matchCandidates}
+        onPick={(c) => void handlePickCandidate(c)}
+        onDismiss={() => setSuggestionDismissed(true)}
       />
     </div>
   );

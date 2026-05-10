@@ -218,6 +218,25 @@ impl Library {
         Ok(())
     }
 
+    /// 全 Cue を関連 Track 付きで取得する (Cue 動的マッチング用)。
+    /// 件数が多い場合は将来 JOIN クエリ + ページングに置き換える。
+    pub fn list_all_cues_with_tracks(&self) -> LibraryResult<Vec<(Cue, Track)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT * FROM cues ORDER BY position_beats ASC",
+        )?;
+        let cues = stmt
+            .query_map(params![], |row| Ok(cue_from_row(row)))?
+            .collect::<Result<Result<Vec<_>, _>, _>>()??;
+
+        let mut out = Vec::with_capacity(cues.len());
+        for cue in cues {
+            if let Some(track) = self.get_track(cue.track_id)? {
+                out.push((cue, track));
+            }
+        }
+        Ok(out)
+    }
+
     pub fn list_cues_for_track(&self, track_id: TrackId) -> LibraryResult<Vec<Cue>> {
         let mut stmt = self.conn.prepare(
             "SELECT * FROM cues WHERE track_id = ?1 ORDER BY position_beats ASC",

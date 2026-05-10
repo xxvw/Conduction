@@ -143,6 +143,11 @@ export const ipc = {
     return call<void>("delete_cue", { cueId });
   },
 
+  // --- Cue 動的マッチング (MixSuggestion 用) ---
+  listMatchCandidates(args: MatchQueryArgs) {
+    return call<MatchCandidate[]>("list_match_candidates", { args });
+  },
+
   // --- USB Export (rekordbox-compatible) ---
   exportPreview(destination: string) {
     return call<ExportPreview>("export_preview", { destination });
@@ -213,6 +218,24 @@ export interface InsertCueArgs {
   energy_level?: number;
   mix_roles: MixRoleId[];
   section_end_beats?: number | null;
+}
+
+export interface MatchCandidate {
+  cue: CueDto;
+  track: TrackSummary;
+  bpm_score: number;
+  key_score: number;
+  energy_score: number;
+  overall_score: number;
+}
+
+export interface MatchQueryArgs {
+  bpm: number;
+  key_camelot: string;
+  energy: number;
+  max_bpm_diff?: number;
+  limit?: number;
+  exclude_track_id?: string;
 }
 
 export interface ExportPreview {

@@ -698,6 +698,84 @@ pub fn delete_cue(
     library.with_library(|lib| lib.delete_cue(id).map_err(|e| e.to_string()))
 }
 
+// ======== Cue 動的マッチング (MixSuggestion 用) ========
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct MatchCandidateDto {
+    pub cue: CueDto,
+    pub track: TrackSummary,
+    pub bpm_score: f32,
+    pub key_score: f32,
+    pub energy_score: f32,
+    pub overall_score: f32,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct MatchQueryArgs {
+    pub bpm: f32,
+    /// Camelot 記法 ("8A" / "11B" 等)。
+    pub key_camelot: String,
+    pub energy: f32,
+    pub max_bpm_diff: Option<f32>,
+    pub limit: Option<u32>,
+    /// このトラックに属する Cue は除外 (= 自分自身を提案しない)。
+    pub exclude_track_id: Option<String>,
+}
+
+pub fn list_match_candidates_impl(
+    library: &LibraryHandle,
+    args: MatchQueryArgs,
+) -> Result<Vec<MatchCandidateDto>, String> {
+    let key: conduction_core::Key = args
+        .key_camelot
+        .parse()
+        .map_err(|e: conduction_core::CoreError| e.to_string())?;
+    let mut query = conduction_conductor::MatchQuery::new(args.bpm, key, args.energy);
+    if let Some(d) = args.max_bpm_diff {
+        query.max_bpm_diff = d;
+    }
+    let limit = args.limit.unwrap_or(8) as usize;
+
+    let pool = library
+        .with_library(|lib| lib.list_all_cues_with_tracks().map_err(|e| e.to_string()))?;
+
+    let exclude = args
+        .exclude_track_id
+        .as_deref()
+        .map(|s| {
+            Uuid::parse_str(s)
+                .map(TrackId::from_uuid)
+                .map_err(|e| format!("invalid exclude_track_id: {e}"))
+        })
+        .transpose()?;
+    let pool: Vec<(Cue, conduction_core::Track)> = pool
+        .into_iter()
+        .filter(|(c, _)| Some(c.track_id) != exclude)
+        .collect();
+
+    let candidates = conduction_conductor::find_candidates(&query, &pool, limit);
+    let out = candidates
+        .into_iter()
+        .map(|sc| MatchCandidateDto {
+            cue: CueDto::from(sc.cue),
+            track: TrackSummary::from_track(sc.track),
+            bpm_score: sc.score.bpm_score,
+            key_score: sc.score.key_score,
+            energy_score: sc.score.energy_score,
+            overall_score: sc.score.overall,
+        })
+        .collect();
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn list_match_candidates(
+    library: State<'_, LibraryHandle>,
+    args: MatchQueryArgs,
+) -> Result<Vec<MatchCandidateDto>, String> {
+    list_match_candidates_impl(&library, args)
+}
+
 // ======== USB Export (rekordbox-compatible) ========
 
 #[tauri::command]

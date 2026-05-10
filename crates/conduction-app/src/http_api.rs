@@ -53,7 +53,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
-use crate::commands::{BeatDto, CueDto, HotCueDto, InsertCueArgs};
+use crate::commands::{BeatDto, CueDto, HotCueDto, InsertCueArgs, MatchCandidateDto, MatchQueryArgs};
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
@@ -150,6 +150,7 @@ fn build_router(state: AppState) -> Router {
         .route("/api/export/execute", post(export_execute))
         .route("/api/tracks/:id/cues", get(list_cues_for_track).post(insert_cue))
         .route("/api/cues/:id", delete(delete_cue))
+        .route("/api/match", post(list_match_candidates))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -886,6 +887,23 @@ async fn delete_cue(
     Ok(StatusCode::OK)
 }
 
+// ---- Cue dynamic matching ----------------------------------------------
+
+#[utoipa::path(
+    post,
+    path = "/api/match",
+    request_body = MatchQueryArgs,
+    responses((status = 200, body = Vec<MatchCandidateDto>))
+)]
+async fn list_match_candidates(
+    State(s): State<AppState>,
+    Json(args): Json<MatchQueryArgs>,
+) -> ApiResult<Json<Vec<MatchCandidateDto>>> {
+    crate::commands::list_match_candidates_impl(&s.library, args)
+        .map(Json)
+        .map_err(ApiError::internal)
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -973,6 +991,7 @@ pub struct HealthResponse {
         list_cues_for_track,
         insert_cue,
         delete_cue,
+        list_match_candidates,
     ),
     components(schemas(
         HealthResponse,
@@ -1006,6 +1025,8 @@ pub struct HealthResponse {
         ExportReport,
         CueDto,
         InsertCueArgs,
+        MatchCandidateDto,
+        MatchQueryArgs,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
@@ -1016,6 +1037,7 @@ pub struct HealthResponse {
         (name = "youtube", description = "yt-dlp search and download"),
         (name = "export", description = "rekordbox-compatible USB export (Phase 1: skeleton)"),
         (name = "cue", description = "Typed cues (intro/breakdown/drop/outro/...) for dynamic matching"),
+        (name = "match", description = "Dynamic cue matching from active deck state"),
     )
 )]
 struct ApiDoc;
