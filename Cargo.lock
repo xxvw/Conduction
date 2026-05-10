@@ -276,6 +276,26 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags 2.11.1",
+ "cexpr",
+ "clang-sys",
+ "itertools",
+ "log",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash",
+ "shlex",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
@@ -687,6 +707,7 @@ dependencies = [
  "ringbuf",
  "rodio",
  "rubato",
+ "soundtouch",
  "symphonia",
  "thiserror 1.0.69",
  "tracing",
@@ -713,8 +734,10 @@ dependencies = [
  "crossbeam",
  "parking_lot",
  "ringbuf",
+ "serde",
  "thiserror 1.0.69",
  "tracing",
+ "utoipa",
 ]
 
 [[package]]
@@ -855,7 +878,7 @@ version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ceec7a6067e62d6f931a2baf6f3a751f4a892595bcec1461a3c94ef9949864b6"
 dependencies = [
- "bindgen",
+ "bindgen 0.72.1",
 ]
 
 [[package]]
@@ -4283,6 +4306,25 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "soundtouch"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a9d07f6efdc0d9e76f0a14bea5f0cfd8b90f3ae2d3d63bd1710867864630e3"
+dependencies = [
+ "soundtouch-ffi",
+]
+
+[[package]]
+name = "soundtouch-ffi"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f6ff07be0b6d38d9244184d1b094dc08c52f5a1d1d23256089c3599faaeb57e"
+dependencies = [
+ "bindgen 0.71.1",
+ "cc",
 ]
 
 [[package]]

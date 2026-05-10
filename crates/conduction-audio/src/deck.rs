@@ -8,7 +8,7 @@ use rodio::{Decoder, Sink, Source};
 use tracing::debug;
 
 use crate::device::OutputDevice;
-use crate::dsp::{DjEffectSource, DspParams};
+use crate::dsp::{DjEffectSource, DspParams, TimeStretchParams, TimeStretchSource};
 use crate::error::{AudioError, AudioResult};
 
 /// チャンネルボリュームの受け入れ範囲。0 〜 2.0（+6dB 相当）。
@@ -103,6 +103,9 @@ pub struct Deck {
 
     // --- DSP（EQ / Filter / Echo / Reverb） ---
     dsp_params: Arc<DspParams>,
+    /// Pitch-preserving time-stretch / pitch-shift パラメータ。
+    /// `key_lock` ON 時に sink の speed 変更の代わりにこちらの tempo を使う。
+    time_stretch_params: Arc<TimeStretchParams>,
 
     /// PFL 送出量（0..1）。1 で Cue デバイスへ流れ、0 で送らない。
     /// Cue 出力デバイスが無い場合は値を保持するだけで何も起きない。
@@ -162,6 +165,7 @@ impl Deck {
             position_offset: Duration::ZERO,
             loop_state: LoopState::default(),
             dsp_params: DspParams::new_arc(),
+            time_stretch_params: TimeStretchParams::new_arc(),
             cue_send: 0.0,
             key_lock: false,
             pitch_offset_semitones: 0.0,
@@ -173,8 +177,12 @@ impl Deck {
     }
 
     pub fn set_key_lock(&mut self, on: bool) {
+        if self.key_lock == on {
+            return;
+        }
         self.key_lock = on;
-        // Phase 2: ここで Source チェーンの time-stretch を有効化する
+        // Sink.set_speed と SoundTouch.tempo の役割を切り替える。
+        self.apply_speed();
     }
 
     pub fn pitch_offset_semitones(&self) -> f32 {
@@ -183,7 +191,9 @@ impl Deck {
 
     pub fn set_pitch_offset_semitones(&mut self, semitones: f32) {
         self.pitch_offset_semitones = semitones.clamp(-12.0, 12.0);
-        // Phase 2: ここで Source チェーンの pitch-shift パラメータを更新する
+        // SoundTouch にそのまま流す (key_lock の状態と独立に常に有効)。
+        self.time_stretch_params
+            .set_pitch_semitones(self.pitch_offset_semitones);
     }
 
     /// DSP パラメータの共有ハンドル。UI スレッドが値を書き換える。
@@ -218,10 +228,11 @@ impl Deck {
         self.sink.pause();
         self.sink.set_volume(self.effective_volume);
         self.sink.set_speed(self.playback_speed());
-        // DSP chain: Decoder → f32 → DjEffectSource → Sink
+        // DSP chain: Decoder → f32 → DjEffectSource → TimeStretchSource → Sink
         let f32_source = decoder.convert_samples::<f32>();
         let with_dsp = DjEffectSource::new(f32_source, self.dsp_params.clone());
-        self.sink.append(with_dsp);
+        let with_stretch = TimeStretchSource::new(with_dsp, self.time_stretch_params.clone());
+        self.sink.append(with_stretch);
 
         // Cue 側: ファイルを再オープンして独立した Decoder + DSP で並行ストリーム化
         if let Some(cue_dev) = cue_device {
@@ -242,7 +253,9 @@ impl Deck {
             sc.set_speed(self.playback_speed());
             let f32_cue = decoder_cue.convert_samples::<f32>();
             let dsp_cue = DjEffectSource::new(f32_cue, self.dsp_params.clone());
-            sc.append(dsp_cue);
+            let stretch_cue =
+                TimeStretchSource::new(dsp_cue, self.time_stretch_params.clone());
+            sc.append(stretch_cue);
             self.sink_cue = Some(sc);
         }
 
@@ -400,9 +413,21 @@ impl Deck {
 
     fn apply_speed(&mut self) {
         let speed = self.playback_speed();
-        self.sink.set_speed(speed);
-        if let Some(s) = &self.sink_cue {
-            s.set_speed(speed);
+        if self.key_lock {
+            // キーロック ON: rodio Sink の speed は固定 (1.0) し、
+            // SoundTouch の tempo に再生速度を流して pitch を保つ。
+            self.sink.set_speed(1.0);
+            if let Some(s) = &self.sink_cue {
+                s.set_speed(1.0);
+            }
+            self.time_stretch_params.set_tempo(speed);
+        } else {
+            // キーロック OFF: 従来通り Sink の rate-shift で速度変更 (= ピッチも上がる)。
+            self.sink.set_speed(speed);
+            if let Some(s) = &self.sink_cue {
+                s.set_speed(speed);
+            }
+            self.time_stretch_params.set_tempo(1.0);
         }
     }
 

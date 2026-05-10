@@ -8,6 +8,8 @@ mod echo;
 mod params;
 mod reverb;
 mod source;
+mod timestretch;
 
 pub use params::DspParams;
 pub use source::DjEffectSource;
+pub use timestretch::{TimeStretchParams, TimeStretchSource};

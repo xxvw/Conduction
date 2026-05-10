@@ -864,7 +864,7 @@ function DeckPanel({
             className="chip sync-chip"
             aria-pressed={snapshot.key_lock}
             onClick={() => void ipc.setKeyLock(deck, !snapshot.key_lock)}
-            title="Master Tempo (keylock) — Phase 1: state only, DSP arrives in Phase 2"
+            title="Master Tempo (keylock): change tempo without affecting pitch"
           >
             MT
           </button>
@@ -878,7 +878,7 @@ function DeckPanel({
           <button
             className="chip sync-chip"
             onClick={onKeySync}
-            title="Compute semitone offset to match opposite deck's Camelot key (Phase 1: stored only)"
+            title="Pitch-shift to match opposite deck's Camelot key (semitone)"
           >
             KEY SYNC
             {snapshot.pitch_offset_semitones !== 0 && (
