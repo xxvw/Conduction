@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use conduction_core::{Setlist, SetlistEntry, SetlistEntryId, SetlistId, TrackId, TransitionSpec};
-use conduction_library::setlist_repo::SetlistImportReport;
+use conduction_library::setlist_repo::{parse_cset_payload, SetlistImportReport};
 use conduction_library::Library;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -123,9 +123,12 @@ impl SetlistHandle {
     }
 
     pub fn import_json(&self, payload: &str) -> SetlistResult<SetlistImportReport> {
+        // JSON parse + バージョン検証は Library lock の外で行う。
+        // payload が大きい (数千 entry の .cset 等) でも他操作を詰まらせない。
+        let env = parse_cset_payload(payload).map_err(SetlistError::Library)?;
         self.library
             .lock()
-            .import_setlist_json(payload)
+            .import_parsed_setlist(env)
             .map_err(SetlistError::Library)
     }
 }
