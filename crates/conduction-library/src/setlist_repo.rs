@@ -525,18 +525,36 @@ impl Library {
         // (entry_id, transition) を後で適用するためのキュー
         let mut pending_transitions: Vec<(SetlistEntryId, CsetTransition)> = Vec::new();
 
-        for csv_entry in env.setlist.entries {
-            let track_id = match self.resolve_track(&csv_entry.track_meta)? {
-                Some(id) => id,
-                None => {
-                    missing_tracks.push(csv_entry.track_meta);
-                    continue;
-                }
+        // 先に全エントリを resolve しておく。transition_to_next は「次のエントリへの
+        // 遷移」なので、次のエントリが missing で skip されると意味が変わってしまう
+        // (A→B の遷移が A→C に流れ込む)。lookahead が要るため二段にする。
+        let resolved: Vec<(CsetEntry, Option<TrackId>)> = env
+            .setlist
+            .entries
+            .into_iter()
+            .map(|e| {
+                let id = self.resolve_track(&e.track_meta)?;
+                Ok::<_, LibraryError>((e, id))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for (i, (csv_entry, track_id_opt)) in resolved.iter().enumerate() {
+            let Some(track_id) = track_id_opt else {
+                missing_tracks.push(csv_entry.track_meta.clone());
+                continue;
             };
-            let entry = self.add_setlist_entry(setlist.id, track_id)?;
+            let entry = self.add_setlist_entry(setlist.id, *track_id)?;
             resolved_entries += 1;
-            if let Some(tx) = csv_entry.transition_to_next {
-                pending_transitions.push((entry.id, tx));
+            if let Some(tx) = csv_entry.transition_to_next.as_ref() {
+                // 次のエントリが解決できた場合のみ transition を残す。
+                // 次が missing なら遷移先が消失するので drop する。
+                let next_resolved = resolved
+                    .get(i + 1)
+                    .map(|(_, t)| t.is_some())
+                    .unwrap_or(false);
+                if next_resolved {
+                    pending_transitions.push((entry.id, tx.clone()));
+                }
             }
         }
 
@@ -763,6 +781,53 @@ mod tests {
         let tx = imported.entries[0].transition_to_next.as_ref().unwrap();
         assert_eq!(tx.template_id, "preset.long_eq_mix");
         assert_eq!(tx.tempo_mode, TempoMode::MatchTarget);
+    }
+
+    #[test]
+    fn cset_transition_dropped_when_next_entry_is_missing() {
+        // A→B→C で A.transition_to_next を設定。送信側は 3 曲とも持っているが、
+        // 受信側に B が無いシナリオでは A の transition は drop されるべき (A→C にズレない)。
+        let mut lib_a = Library::in_memory().unwrap();
+        let mut t_a = sample_track("/tmp/a.mp3");
+        t_a.title = "A".into();
+        let mut t_b = sample_track("/tmp/b.mp3");
+        t_b.title = "B".into();
+        let mut t_c = sample_track("/tmp/c.mp3");
+        t_c.title = "C".into();
+        lib_a.insert_track(&t_a).unwrap();
+        lib_a.insert_track(&t_b).unwrap();
+        lib_a.insert_track(&t_c).unwrap();
+        let s = lib_a.create_setlist("X".into()).unwrap();
+        let e_a = lib_a.add_setlist_entry(s.id, t_a.id).unwrap();
+        lib_a.add_setlist_entry(s.id, t_b.id).unwrap();
+        lib_a.add_setlist_entry(s.id, t_c.id).unwrap();
+        lib_a
+            .set_setlist_transition(
+                s.id,
+                e_a.id,
+                Some(TransitionSpec {
+                    template_id: "preset.long_eq_mix".into(),
+                    tempo_mode: TempoMode::MatchTarget,
+                    entry_cue: None,
+                    exit_cue: None,
+                }),
+            )
+            .unwrap();
+
+        let json = lib_a.export_setlist_json(s.id).unwrap();
+
+        // 受信側: B が存在しない
+        let mut lib_b = Library::in_memory().unwrap();
+        lib_b.insert_track(&t_a).unwrap();
+        lib_b.insert_track(&t_c).unwrap();
+        let report = lib_b.import_setlist_json(&json).unwrap();
+        assert_eq!(report.resolved_entries, 2);
+        assert_eq!(report.missing_tracks.len(), 1);
+
+        let imported = &lib_b.list_setlists().unwrap()[0];
+        assert_eq!(imported.entries.len(), 2);
+        // A の transition_to_next は drop されている (A→B が消えたので A→C に流れない)
+        assert!(imported.entries[0].transition_to_next.is_none());
     }
 
     #[test]
