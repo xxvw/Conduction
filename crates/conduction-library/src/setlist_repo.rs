@@ -719,6 +719,59 @@ mod tests {
         assert_eq!(lib.get_setlist(s.id).unwrap().unwrap().entries.len(), 0);
     }
 
+    /// setlist transition の entry_cue / exit_cue が指す Cue を削除すると、
+    /// setlist 側の参照は NULL に戻る (dangling cue id を残さない)。
+    #[test]
+    fn delete_cue_clears_setlist_transition_refs() {
+        use conduction_core::{CueType, Key, KeyMode};
+        let mut lib = Library::in_memory().unwrap();
+        let t1 = sample_track("/tmp/a.mp3");
+        let t2 = sample_track("/tmp/b.mp3");
+        lib.insert_track(&t1).unwrap();
+        lib.insert_track(&t2).unwrap();
+        let key = Key::new(8, KeyMode::Minor).unwrap();
+        let exit_cue = conduction_core::Cue::new(
+            t1.id, 64.0, CueType::Drop, 120.0, key, 0.7, 32,
+        )
+        .unwrap();
+        let entry_cue = conduction_core::Cue::new(
+            t2.id, 0.0, CueType::IntroStart, 120.0, key, 0.4, 16,
+        )
+        .unwrap();
+        lib.insert_cue(&exit_cue).unwrap();
+        lib.insert_cue(&entry_cue).unwrap();
+
+        let s = lib.create_setlist("X".into()).unwrap();
+        let e1 = lib.add_setlist_entry(s.id, t1.id).unwrap();
+        lib.add_setlist_entry(s.id, t2.id).unwrap();
+        lib.set_setlist_transition(
+            s.id,
+            e1.id,
+            Some(TransitionSpec {
+                template_id: "preset.long_eq_mix".into(),
+                tempo_mode: TempoMode::LinearBlend,
+                entry_cue: Some(entry_cue.id),
+                exit_cue: Some(exit_cue.id),
+            }),
+        )
+        .unwrap();
+
+        // 削除前: cue id が設定されている
+        let before = lib.get_setlist(s.id).unwrap().unwrap();
+        let tx = before.entries[0].transition_to_next.as_ref().unwrap();
+        assert_eq!(tx.exit_cue, Some(exit_cue.id));
+        assert_eq!(tx.entry_cue, Some(entry_cue.id));
+
+        // 片方の cue を削除
+        lib.delete_cue(exit_cue.id).unwrap();
+
+        // 削除後: 該当 cue 参照だけ NULL に戻る (もう片方は残る)
+        let after = lib.get_setlist(s.id).unwrap().unwrap();
+        let tx = after.entries[0].transition_to_next.as_ref().unwrap();
+        assert_eq!(tx.exit_cue, None);
+        assert_eq!(tx.entry_cue, Some(entry_cue.id));
+    }
+
     #[test]
     fn cset_export_import_roundtrip_via_path() {
         let mut lib_a = Library::in_memory().unwrap();
