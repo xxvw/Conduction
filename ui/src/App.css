@@ -2165,6 +2165,16 @@ input[type="range"] {
   font-size: var(--fs-micro);
   color: var(--c-ink-9);
 }
+.setlist-import-report {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-small);
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  padding: var(--s-2) var(--s-3);
+}
 
 .setlist-detail-panel {
   display: flex;

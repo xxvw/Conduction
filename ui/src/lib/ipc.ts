@@ -190,6 +190,12 @@ export const ipc = {
       spec,
     });
   },
+  setlistExport(id: string, destination: string) {
+    return call<void>("setlist_export", { id, destination });
+  },
+  setlistImport(source: string) {
+    return call<SetlistImportReport>("setlist_import", { source });
+  },
 
   // --- Templates ---
   listTemplatePresets() {
@@ -408,6 +414,20 @@ export interface SetlistDto {
   id: string;
   name: string;
   entries: SetlistEntryDto[];
+}
+
+export interface MissingTrackInfo {
+  path: string;
+  title: string;
+  artist: string;
+}
+
+export interface SetlistImportReport {
+  setlist_id: string;
+  setlist_name: string;
+  total_entries: number;
+  resolved_entries: number;
+  missing_tracks: MissingTrackInfo[];
 }
 
 export interface KeybindingEntry {

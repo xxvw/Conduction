@@ -3,12 +3,15 @@
 //! `Library` の impl block を拡張する形で、setlist CRUD を提供する。
 //! 並び替えはトランザクション内で position を一括書き換え。
 
+use std::path::PathBuf;
+
 use chrono::Utc;
 use conduction_core::{
     CueId, Setlist, SetlistEntry, SetlistEntryId, SetlistId, TempoMode, TrackId,
     TransitionSpec,
 };
 use rusqlite::{params, Connection, Row};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{LibraryError, LibraryResult};
@@ -399,6 +402,187 @@ fn renumber_positions(conn: &Connection, setlist_id: SetlistId) -> LibraryResult
     Ok(())
 }
 
+// ========== .cset Export / Import (Phase C2) ==========
+//
+// 形式: 単一 JSON ファイル (拡張子 .cset)。
+// UUID 系 (setlist/entry/cue id) はマシン跨ぎで意味を持たないので落とす。
+// track は path → (title, artist) の順で resolve、いずれもヒットしなければ skip。
+
+const CSET_FORMAT: &str = "conduction.cset";
+const CSET_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsetEnvelope {
+    pub format: String,
+    pub version: u32,
+    pub exported_at: String,
+    pub setlist: CsetSetlist,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsetSetlist {
+    pub name: String,
+    pub entries: Vec<CsetEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsetEntry {
+    pub track_meta: CsetTrackMeta,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition_to_next: Option<CsetTransition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsetTrackMeta {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub bpm: f32,
+    /// Camelot 表記 ("8A" 等)。
+    pub key: String,
+    pub duration_sec: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CsetTransition {
+    pub template_id: String,
+    pub tempo_mode: TempoMode,
+    // cue id 参照はマシン跨ぎで意味がないため落とす。
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetlistImportReport {
+    pub setlist_id: String,
+    pub setlist_name: String,
+    pub total_entries: usize,
+    pub resolved_entries: usize,
+    pub missing_tracks: Vec<CsetTrackMeta>,
+}
+
+impl Library {
+    /// 指定 setlist を `.cset` JSON 文字列にシリアライズする。
+    pub fn export_setlist_json(&self, id: SetlistId) -> LibraryResult<String> {
+        let setlist = self
+            .get_setlist(id)?
+            .ok_or_else(|| LibraryError::Unsupported(format!("setlist not found: {id}")))?;
+
+        let mut entries = Vec::with_capacity(setlist.entries.len());
+        for e in &setlist.entries {
+            // track_id → track 解決。見つからなければ skip。
+            let Some(track) = self.get_track(e.track_id)? else { continue };
+            entries.push(CsetEntry {
+                track_meta: CsetTrackMeta {
+                    path: track.path.to_string_lossy().into_owned(),
+                    title: track.title.clone(),
+                    artist: track.artist.clone(),
+                    bpm: track.bpm,
+                    key: track.key.to_camelot(),
+                    duration_sec: track.duration.as_secs_f64(),
+                },
+                transition_to_next: e.transition_to_next.as_ref().map(|t| CsetTransition {
+                    template_id: t.template_id.clone(),
+                    tempo_mode: t.tempo_mode,
+                }),
+            });
+        }
+
+        let env = CsetEnvelope {
+            format: CSET_FORMAT.to_string(),
+            version: CSET_VERSION,
+            exported_at: dt_to_str(Utc::now()),
+            setlist: CsetSetlist {
+                name: setlist.name,
+                entries,
+            },
+        };
+        Ok(serde_json::to_string_pretty(&env)
+            .map_err(|e| LibraryError::Unsupported(format!("json serialize: {e}")))?)
+    }
+
+    /// `.cset` JSON を読み、新しい setlist を作成する。
+    /// track の解決は path → (title, artist) の順。いずれもヒットしない entry は missing_tracks に積む。
+    pub fn import_setlist_json(&mut self, payload: &str) -> LibraryResult<SetlistImportReport> {
+        let env: CsetEnvelope = serde_json::from_str(payload)
+            .map_err(|e| LibraryError::Unsupported(format!("json parse: {e}")))?;
+        if env.format != CSET_FORMAT {
+            return Err(LibraryError::Unsupported(format!(
+                "unexpected format: {}",
+                env.format
+            )));
+        }
+        if env.version != CSET_VERSION {
+            return Err(LibraryError::Unsupported(format!(
+                "unsupported version: {}",
+                env.version
+            )));
+        }
+
+        let setlist = self.create_setlist(env.setlist.name.clone())?;
+        let mut resolved_entries = 0usize;
+        let mut missing_tracks = Vec::new();
+
+        let total_entries = env.setlist.entries.len();
+        // (entry_id, transition) を後で適用するためのキュー
+        let mut pending_transitions: Vec<(SetlistEntryId, CsetTransition)> = Vec::new();
+
+        for csv_entry in env.setlist.entries {
+            let track_id = match self.resolve_track(&csv_entry.track_meta)? {
+                Some(id) => id,
+                None => {
+                    missing_tracks.push(csv_entry.track_meta);
+                    continue;
+                }
+            };
+            let entry = self.add_setlist_entry(setlist.id, track_id)?;
+            resolved_entries += 1;
+            if let Some(tx) = csv_entry.transition_to_next {
+                pending_transitions.push((entry.id, tx));
+            }
+        }
+
+        for (entry_id, tx) in pending_transitions {
+            self.set_setlist_transition(
+                setlist.id,
+                entry_id,
+                Some(TransitionSpec {
+                    template_id: tx.template_id,
+                    tempo_mode: tx.tempo_mode,
+                    entry_cue: None,
+                    exit_cue: None,
+                }),
+            )?;
+        }
+
+        Ok(SetlistImportReport {
+            setlist_id: setlist.id.as_uuid().to_string(),
+            setlist_name: setlist.name,
+            total_entries,
+            resolved_entries,
+            missing_tracks,
+        })
+    }
+
+    fn resolve_track(&self, meta: &CsetTrackMeta) -> LibraryResult<Option<TrackId>> {
+        // 1) path 完全一致
+        if let Some(t) = self.get_track_by_path(&PathBuf::from(&meta.path))? {
+            return Ok(Some(t.id));
+        }
+        // 2) (title, artist) で fuzzy 一致 (大文字小文字無視)
+        let title_l = meta.title.to_lowercase();
+        let artist_l = meta.artist.to_lowercase();
+        for t in self.list_tracks()? {
+            if !title_l.is_empty()
+                && !artist_l.is_empty()
+                && t.title.to_lowercase() == title_l
+                && t.artist.to_lowercase() == artist_l
+            {
+                return Ok(Some(t.id));
+            }
+        }
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -533,5 +717,77 @@ mod tests {
         assert_eq!(lib.get_setlist(s.id).unwrap().unwrap().entries.len(), 1);
         lib.delete_track(t1.id).unwrap();
         assert_eq!(lib.get_setlist(s.id).unwrap().unwrap().entries.len(), 0);
+    }
+
+    #[test]
+    fn cset_export_import_roundtrip_via_path() {
+        let mut lib_a = Library::in_memory().unwrap();
+        let mut t1 = sample_track("/tmp/a.mp3");
+        t1.title = "Alpha".into();
+        let mut t2 = sample_track("/tmp/b.mp3");
+        t2.title = "Beta".into();
+        lib_a.insert_track(&t1).unwrap();
+        lib_a.insert_track(&t2).unwrap();
+        let s = lib_a.create_setlist("Night".into()).unwrap();
+        let e1 = lib_a.add_setlist_entry(s.id, t1.id).unwrap();
+        lib_a.add_setlist_entry(s.id, t2.id).unwrap();
+        lib_a
+            .set_setlist_transition(
+                s.id,
+                e1.id,
+                Some(TransitionSpec {
+                    template_id: "preset.long_eq_mix".into(),
+                    tempo_mode: TempoMode::MatchTarget,
+                    entry_cue: None,
+                    exit_cue: None,
+                }),
+            )
+            .unwrap();
+
+        let json = lib_a.export_setlist_json(s.id).unwrap();
+
+        // 受信側のライブラリ: 同じ path のトラックが入っている。
+        let mut lib_b = Library::in_memory().unwrap();
+        lib_b.insert_track(&t1).unwrap();
+        lib_b.insert_track(&t2).unwrap();
+        let report = lib_b.import_setlist_json(&json).unwrap();
+        assert_eq!(report.total_entries, 2);
+        assert_eq!(report.resolved_entries, 2);
+        assert!(report.missing_tracks.is_empty());
+
+        let setlists = lib_b.list_setlists().unwrap();
+        assert_eq!(setlists.len(), 1);
+        let imported = &setlists[0];
+        assert_eq!(imported.name, "Night");
+        assert_eq!(imported.entries.len(), 2);
+        let tx = imported.entries[0].transition_to_next.as_ref().unwrap();
+        assert_eq!(tx.template_id, "preset.long_eq_mix");
+        assert_eq!(tx.tempo_mode, TempoMode::MatchTarget);
+    }
+
+    #[test]
+    fn cset_missing_track_recorded_in_report() {
+        let mut lib_a = Library::in_memory().unwrap();
+        let t1 = sample_track("/tmp/a.mp3");
+        lib_a.insert_track(&t1).unwrap();
+        let s = lib_a.create_setlist("X".into()).unwrap();
+        lib_a.add_setlist_entry(s.id, t1.id).unwrap();
+        let json = lib_a.export_setlist_json(s.id).unwrap();
+
+        // 受信側: 該当 track 無し。
+        let mut lib_b = Library::in_memory().unwrap();
+        let report = lib_b.import_setlist_json(&json).unwrap();
+        assert_eq!(report.total_entries, 1);
+        assert_eq!(report.resolved_entries, 0);
+        assert_eq!(report.missing_tracks.len(), 1);
+        // setlist は空でも作成される
+        assert_eq!(lib_b.list_setlists().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cset_rejects_wrong_format_or_version() {
+        let mut lib = Library::in_memory().unwrap();
+        assert!(lib.import_setlist_json("{ \"format\": \"x\", \"version\": 1, \"exported_at\": \"x\", \"setlist\": { \"name\": \"n\", \"entries\": [] } }").is_err());
+        assert!(lib.import_setlist_json("{ \"format\": \"conduction.cset\", \"version\": 99, \"exported_at\": \"x\", \"setlist\": { \"name\": \"n\", \"entries\": [] } }").is_err());
     }
 }

@@ -110,6 +110,8 @@ pub fn run() {
             commands::setlist_remove_entry,
             commands::setlist_move_entry,
             commands::setlist_set_transition,
+            commands::setlist_export,
+            commands::setlist_import,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

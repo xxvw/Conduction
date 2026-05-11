@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use conduction_core::{Setlist, SetlistEntry, SetlistEntryId, SetlistId, TrackId, TransitionSpec};
+use conduction_library::setlist_repo::SetlistImportReport;
 use conduction_library::Library;
 use parking_lot::Mutex;
 use thiserror::Error;
@@ -111,6 +112,20 @@ impl SetlistHandle {
         self.library
             .lock()
             .set_setlist_transition(id, entry_id, spec)
+            .map_err(SetlistError::Library)
+    }
+
+    pub fn export_json(&self, id: SetlistId) -> SetlistResult<String> {
+        self.library
+            .lock()
+            .export_setlist_json(id)
+            .map_err(SetlistError::Library)
+    }
+
+    pub fn import_json(&self, payload: &str) -> SetlistResult<SetlistImportReport> {
+        self.library
+            .lock()
+            .import_setlist_json(payload)
             .map_err(SetlistError::Library)
     }
 }

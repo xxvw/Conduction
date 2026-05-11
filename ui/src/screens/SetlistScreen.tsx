@@ -1,3 +1,4 @@
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SetlistOverview } from "@/components/setlist/SetlistOverview";
@@ -7,6 +8,7 @@ import {
   type CueTypeId,
   type SetlistDto,
   type SetlistEntryDto,
+  type SetlistImportReport,
   type TempoMode,
   type TemplatePreset,
   type TransitionSpec,
@@ -32,6 +34,7 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [presets, setPresets] = useState<TemplatePreset[]>([]);
   const [newName, setNewName] = useState("");
+  const [lastImport, setLastImport] = useState<SetlistImportReport | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -159,6 +162,41 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
     [selectedId, refresh],
   );
 
+  const handleExport = useCallback(
+    async (id: string, defaultName: string) => {
+      try {
+        const dest = await save({
+          defaultPath: `${defaultName || "setlist"}.cset`,
+          filters: [{ name: "Conduction Setlist", extensions: ["cset"] }],
+        });
+        if (!dest) return;
+        await ipc.setlistExport(id, dest);
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [],
+  );
+
+  const handleImport = useCallback(async () => {
+    try {
+      const src = await open({
+        multiple: false,
+        filters: [
+          { name: "Conduction Setlist", extensions: ["cset"] },
+          { name: "JSON", extensions: ["json"] },
+        ],
+      });
+      if (!src || typeof src !== "string") return;
+      const report = await ipc.setlistImport(src);
+      setLastImport(report);
+      setSelectedId(report.setlist_id);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [refresh]);
+
   return (
     <section className="setlist-screen">
       <aside className="setlist-list-panel">
@@ -183,6 +221,33 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
             + New
           </button>
         </div>
+        <button
+          className="btn"
+          style={{ alignSelf: "stretch" }}
+          onClick={() => void handleImport()}
+          title="Import a .cset file"
+        >
+          Import…
+        </button>
+        {lastImport && (
+          <div className="setlist-import-report">
+            <strong>{lastImport.setlist_name}</strong> imported ·{" "}
+            {lastImport.resolved_entries}/{lastImport.total_entries} resolved
+            {lastImport.missing_tracks.length > 0 && (
+              <>
+                {" "}
+                · {lastImport.missing_tracks.length} missing
+              </>
+            )}
+            <button
+              className="chip"
+              style={{ marginLeft: "auto" }}
+              onClick={() => setLastImport(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {error && (
           <p className="hint" style={{ color: "var(--c-danger)" }}>
             {error}
@@ -229,6 +294,7 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
             onMoveEntry={handleMoveEntry}
             onSetTransition={handleSetTransition}
             onLoadToDeck={onLoadToDeck}
+            onExport={() => void handleExport(selected.id, selected.name)}
           />
         ) : (
           <p className="hint">Select or create a setlist to start.</p>
@@ -257,6 +323,7 @@ function SetlistDetail({
   onMoveEntry,
   onSetTransition,
   onLoadToDeck,
+  onExport,
 }: {
   setlist: SetlistDto;
   tracksById: Map<string, TrackSummary>;
@@ -271,6 +338,7 @@ function SetlistDetail({
     spec: TransitionSpec | null,
   ) => void | Promise<void>;
   onLoadToDeck: (deck: DeckId, path: string) => void;
+  onExport: () => void;
 }) {
   const [nameDraft, setNameDraft] = useState(setlist.name);
   useEffect(() => {
@@ -348,6 +416,14 @@ function SetlistDetail({
         <span className="setlist-detail-meta">
           {setlist.entries.length} track{setlist.entries.length === 1 ? "" : "s"}
         </span>
+        <button
+          className="btn"
+          onClick={onExport}
+          disabled={setlist.entries.length === 0}
+          title="Export this setlist as a .cset file"
+        >
+          Export…
+        </button>
       </header>
 
       <div className="setlist-entries">

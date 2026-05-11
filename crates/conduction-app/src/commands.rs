@@ -647,6 +647,64 @@ pub fn setlist_set_transition(
         .map_err(|e| e.to_string())
 }
 
+// ---- Setlist export / import (.cset) ----
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct SetlistImportReportDto {
+    pub setlist_id: String,
+    pub setlist_name: String,
+    pub total_entries: usize,
+    pub resolved_entries: usize,
+    pub missing_tracks: Vec<MissingTrackDto>,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct MissingTrackDto {
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+}
+
+#[tauri::command]
+pub fn setlist_export(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+    destination: String,
+) -> CmdResult<()> {
+    let sid = parse_setlist_id(&id)?;
+    let payload = setlists.export_json(sid).map_err(|e| e.to_string())?;
+    std::fs::write(&destination, payload)
+        .map_err(|e| format!("write {destination}: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn setlist_import(
+    setlists: State<'_, SetlistHandle>,
+    source: String,
+) -> CmdResult<SetlistImportReportDto> {
+    let payload =
+        std::fs::read_to_string(&source).map_err(|e| format!("read {source}: {e}"))?;
+    let report = setlists
+        .import_json(&payload)
+        .map_err(|e| e.to_string())?;
+    Ok(SetlistImportReportDto {
+        setlist_id: report.setlist_id,
+        setlist_name: report.setlist_name,
+        total_entries: report.total_entries,
+        resolved_entries: report.resolved_entries,
+        missing_tracks: report
+            .missing_tracks
+            .into_iter()
+            .map(|m| MissingTrackDto {
+                path: m.path,
+                title: m.title,
+                artist: m.artist,
+            })
+            .collect(),
+    })
+}
+
 // ======== Templates (transition 自動オートメーション) ========
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
