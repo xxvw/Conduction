@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AutomationTimeline } from "@/components/templates/AutomationTimeline";
+import { NodeGraphEditor } from "@/components/templates/NodeGraphEditor";
 import {
   ipc,
   type AutomationTrack,
   type TemplateFull,
   type TemplatePreset,
 } from "@/lib/ipc";
+
+type EditorMode = "visual" | "node";
 
 export function TemplatesScreen() {
   const [presets, setPresets] = useState<TemplatePreset[]>([]);
@@ -18,6 +21,9 @@ export function TemplatesScreen() {
   const [saving, setSaving] = useState<boolean>(false);
   // 編集中の tracks。null なら未編集。
   const [draftTracks, setDraftTracks] = useState<AutomationTrack[] | null>(null);
+  const [editorMode, setEditorMode] = useState<EditorMode>("visual");
+  // Node エディタで選択中の track index (Visual に keyframes を表示する時に使う)。
+  const [selectedTrackIdx, setSelectedTrackIdx] = useState<number | null>(null);
 
   // async ハンドラから「現在の選択 ID」を読むための ref。
   // closure に閉じ込めた selectedId は古くなるので、await 後の判定には ref を使う。
@@ -335,20 +341,24 @@ export function TemplatesScreen() {
               )}
             </div>
             <div className="templates-editor-mode-tabs">
-              <button className="templates-editor-mode" data-active>
+              <button
+                className="templates-editor-mode"
+                data-active={editorMode === "visual" || undefined}
+                onClick={() => setEditorMode("visual")}
+              >
                 Visual
               </button>
               <button
                 className="templates-editor-mode"
-                disabled
-                title="Phase D4"
+                data-active={editorMode === "node" || undefined}
+                onClick={() => setEditorMode("node")}
               >
                 Node
               </button>
               <button
                 className="templates-editor-mode"
                 disabled
-                title="Phase D4"
+                title="Phase D4 (next)"
               >
                 Script
               </button>
@@ -363,23 +373,40 @@ export function TemplatesScreen() {
           {loading && <p className="hint">Loading…</p>}
           {detail && !loading && (
             <div className="templates-editor-body">
-              <AutomationTimeline
-                template={
-                  draftTracks
-                    ? { ...detail, tracks: draftTracks }
-                    : detail
-                }
-                editable={isUserSelected}
-                onTracksChange={(next) => setDraftTracks(next)}
-              />
-              {isUserSelected && (
-                <p
-                  className="hint"
-                  style={{ fontSize: "var(--fs-micro)", marginTop: "var(--s-2)" }}
-                >
-                  Drag a keyframe to move (snaps to 1/4 beat). Double-click empty area
-                  to add. Right-click to delete (each row keeps at least 1).
-                </p>
+              {editorMode === "visual" ? (
+                <>
+                  <AutomationTimeline
+                    template={
+                      draftTracks
+                        ? { ...detail, tracks: draftTracks }
+                        : detail
+                    }
+                    editable={isUserSelected}
+                    onTracksChange={(next) => setDraftTracks(next)}
+                  />
+                  {isUserSelected && (
+                    <p
+                      className="hint"
+                      style={{
+                        fontSize: "var(--fs-micro)",
+                        marginTop: "var(--s-2)",
+                      }}
+                    >
+                      Drag a keyframe to move (snaps to 1/4 beat). Double-click
+                      empty area to add. Right-click to delete (each row keeps
+                      at least 1).
+                    </p>
+                  )}
+                </>
+              ) : (
+                <NodeGraphEditorPanel
+                  detail={detail}
+                  draftTracks={draftTracks}
+                  editable={isUserSelected}
+                  selectedTrackIdx={selectedTrackIdx}
+                  onSelectTrack={setSelectedTrackIdx}
+                  onTracksChange={(next) => setDraftTracks(next)}
+                />
               )}
             </div>
           )}
@@ -387,4 +414,111 @@ export function TemplatesScreen() {
       </div>
     </section>
   );
+}
+
+/** Node タブの中身。グラフ + 選択中 source の keyframes を AutomationTimeline で表示。 */
+function NodeGraphEditorPanel({
+  detail,
+  draftTracks,
+  editable,
+  selectedTrackIdx,
+  onSelectTrack,
+  onTracksChange,
+}: {
+  detail: TemplateFull;
+  draftTracks: AutomationTrack[] | null;
+  editable: boolean;
+  selectedTrackIdx: number | null;
+  onSelectTrack: (idx: number | null) => void;
+  onTracksChange: (next: AutomationTrack[]) => void;
+}) {
+  const tracks = draftTracks ?? detail.tracks;
+  const effective: TemplateFull = useMemo(
+    () => ({ ...detail, tracks }),
+    [detail, tracks],
+  );
+  // 選択中 track が範囲外になったら解除 (track 削除や preset 切替時)
+  useEffect(() => {
+    if (selectedTrackIdx != null && selectedTrackIdx >= tracks.length) {
+      onSelectTrack(null);
+    }
+  }, [tracks.length, selectedTrackIdx, onSelectTrack]);
+
+  const selectedTrackTemplate: TemplateFull | null =
+    selectedTrackIdx != null && tracks[selectedTrackIdx]
+      ? {
+          ...detail,
+          tracks: [tracks[selectedTrackIdx]!],
+        }
+      : null;
+
+  const handleSelectedKeyframesChange = useCallback(
+    (nextOneTrack: AutomationTrack[]) => {
+      if (selectedTrackIdx == null) return;
+      const nextOne = nextOneTrack[0];
+      if (!nextOne) return;
+      const merged = tracks.map((tr, i) =>
+        i === selectedTrackIdx ? nextOne : tr,
+      );
+      onTracksChange(merged);
+    },
+    [selectedTrackIdx, tracks, onTracksChange],
+  );
+
+  return (
+    <div className="node-editor-panel">
+      <NodeGraphEditor
+        template={effective}
+        editable={editable}
+        onTracksChange={onTracksChange}
+        selectedTrackIdx={selectedTrackIdx}
+        onSelectTrack={onSelectTrack}
+      />
+      <div className="node-editor-detail">
+        {selectedTrackTemplate ? (
+          <>
+            <div className="node-editor-detail-head">
+              Keyframes —{" "}
+              <strong>
+                {targetShortLabel(selectedTrackTemplate.tracks[0]!.target)}
+              </strong>
+            </div>
+            <AutomationTimeline
+              template={selectedTrackTemplate}
+              editable={editable}
+              onTracksChange={handleSelectedKeyframesChange}
+            />
+          </>
+        ) : (
+          <p className="hint" style={{ fontSize: "var(--fs-micro)" }}>
+            Select a node above to edit its keyframes.
+            {editable && tracks.length === 0 && " Add Track to start."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function targetShortLabel(target: import("@/lib/ipc").BuiltInTarget): string {
+  switch (target.type) {
+    case "crossfader":
+      return "Crossfader";
+    case "master_volume":
+      return "Master Vol";
+    case "deck_volume":
+      return `Deck ${target.deck} · Volume`;
+    case "deck_eq_low":
+      return `Deck ${target.deck} · EQ Low`;
+    case "deck_eq_mid":
+      return `Deck ${target.deck} · EQ Mid`;
+    case "deck_eq_high":
+      return `Deck ${target.deck} · EQ High`;
+    case "deck_filter":
+      return `Deck ${target.deck} · Filter`;
+    case "deck_echo_wet":
+      return `Deck ${target.deck} · Echo Wet`;
+    case "deck_reverb_wet":
+      return `Deck ${target.deck} · Reverb Wet`;
+  }
 }
