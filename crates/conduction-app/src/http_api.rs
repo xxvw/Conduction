@@ -969,6 +969,8 @@ async fn get_template_preset(
 pub struct StartTemplateRequest {
     pub preset_id: String,
     pub bpm: f32,
+    #[serde(default)]
+    pub reverse: bool,
 }
 
 #[utoipa::path(
@@ -981,8 +983,11 @@ async fn start_template_preset(
     State(s): State<AppState>,
     Json(body): Json<StartTemplateRequest>,
 ) -> ApiResult<StatusCode> {
-    let preset = crate::commands::resolve_template_impl(&s.library, &body.preset_id)
+    let mut preset = crate::commands::resolve_template_impl(&s.library, &body.preset_id)
         .map_err(ApiError::bad_request)?;
+    if body.reverse {
+        preset = preset.reversed();
+    }
     if !body.bpm.is_finite() || body.bpm <= 0.0 {
         return Err(ApiError::bad_request(format!("invalid bpm: {}", body.bpm)));
     }

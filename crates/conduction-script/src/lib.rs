@@ -89,6 +89,8 @@ struct ScriptState {
     tracks: HashMap<String, AutomationTrack>,
     /// 挿入順序を保つための target_key の出現順。
     order: Vec<String>,
+    /// "a_to_b" (default) または "b_to_a"。後者なら compile 終了時に reversed する。
+    direction_reversed: bool,
 }
 
 #[derive(Debug, Error)]
@@ -141,6 +143,7 @@ pub fn compile_lua_to_template(
         duration_beats: opts.default_duration_beats,
         tracks: HashMap::new(),
         order: Vec::new(),
+        direction_reversed: false,
     }));
 
     // duration_beats をグローバルにセット。
@@ -160,6 +163,24 @@ pub fn compile_lua_to_template(
             Ok(())
         })?;
         lua.globals().set("set_duration", f)?;
+    }
+
+    // set_direction("a_to_b" | "b_to_a")
+    {
+        let state = Rc::clone(&state);
+        let f = lua.create_function(move |_, dir: String| {
+            match dir.as_str() {
+                "a_to_b" => state.borrow_mut().direction_reversed = false,
+                "b_to_a" => state.borrow_mut().direction_reversed = true,
+                other => {
+                    return Err(mlua::Error::external(ScriptError::Lua(format!(
+                        "set_direction: expected \"a_to_b\" or \"b_to_a\", got {other:?}"
+                    ))));
+                }
+            }
+            Ok(())
+        })?;
+        lua.globals().set("set_direction", f)?;
     }
 
     // add_keyframe(target, beat, value [, curve])
@@ -281,13 +302,20 @@ pub fn compile_lua_to_template(
         }
     }
 
-    Ok(Template {
+    let template = Template {
         id: opts.template_id.unwrap_or_default(),
         name: opts.template_name.unwrap_or_else(|| "Untitled Script".into()),
         duration_beats: st.duration_beats,
         tracks,
         source: Some(source.to_string()),
-    })
+    };
+    // set_direction("b_to_a") が呼ばれていたら、出力 Template を反転する。
+    // 反転後も source は残す (再 compile すると同じ direction を再適用するため)。
+    if st.direction_reversed {
+        Ok(template.reversed())
+    } else {
+        Ok(template)
+    }
 }
 
 fn value_to_f64(v: Value) -> f64 {
@@ -537,6 +565,43 @@ mod tests {
     }
 
     #[test]
+    fn set_direction_b_to_a_flips_output() {
+        let src = r#"
+            set_direction("b_to_a")
+            add_keyframe("crossfader", 0, -1)
+            add_keyframe("crossfader", 16, 1)
+            add_keyframe("deck_eq_low.A", 8, -26)
+        "#;
+        let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
+        // Crossfader 符号反転
+        let xfader = t
+            .tracks
+            .iter()
+            .find(|tr| matches!(tr.target, BuiltInTarget::Crossfader))
+            .unwrap();
+        assert!((xfader.keyframes[0].value - 1.0).abs() < 1e-5);
+        assert!((xfader.keyframes[1].value + 1.0).abs() < 1e-5);
+        // deck_eq_low.A は deck_eq_low.B に swap される
+        let has_b = t.tracks.iter().any(|tr| {
+            matches!(
+                tr.target,
+                BuiltInTarget::DeckEqLow { deck: DeckSlot::B }
+            )
+        });
+        assert!(has_b);
+    }
+
+    #[test]
+    fn set_direction_invalid_returns_error() {
+        let err = compile_lua_to_template(
+            r#"set_direction("sideways")"#,
+            CompileOptions::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(err, ScriptError::Lua(_)));
+    }
+
+    #[test]
     fn prelude_each_phrase_iterates() {
         let src = r#"
             set_duration(32)
@@ -547,6 +612,49 @@ mod tests {
         let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
         // 0, 8, 16, 24, 32 の 5 個
         assert_eq!(t.tracks[0].keyframes.len(), 5);
+    }
+
+    #[test]
+    fn builtin_preset_source_roundtrips() {
+        // 内蔵 preset の to_lua_source() を compile して、もとと同じ tracks 構造が
+        // 出てくる (id/name 以外) ことを確認。
+        use conduction_conductor::Template;
+        for preset in Template::all_presets() {
+            let src = preset.source.as_ref().expect("built-in preset has source");
+            let compiled = compile_lua_to_template(
+                src,
+                CompileOptions {
+                    default_duration_beats: preset.duration_beats,
+                    template_id: Some(preset.id.clone()),
+                    template_name: Some(preset.name.clone()),
+                },
+            )
+            .unwrap_or_else(|e| panic!("compile failed for {}: {e}", preset.id));
+
+            assert_eq!(
+                compiled.duration_beats, preset.duration_beats,
+                "duration mismatch for {}",
+                preset.id
+            );
+            assert_eq!(
+                compiled.tracks.len(),
+                preset.tracks.len(),
+                "track count mismatch for {}",
+                preset.id
+            );
+            // 各 track の keyframe 数を比較 (順序は to_lua_source の出力順なので
+            // tracks[i] が対応している前提)。
+            for (i, (a, b)) in compiled.tracks.iter().zip(preset.tracks.iter()).enumerate()
+            {
+                assert_eq!(
+                    a.keyframes.len(),
+                    b.keyframes.len(),
+                    "kf count mismatch for {} track[{}]",
+                    preset.id,
+                    i
+                );
+            }
+        }
     }
 
     #[test]

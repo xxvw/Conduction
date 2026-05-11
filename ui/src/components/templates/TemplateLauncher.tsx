@@ -6,7 +6,7 @@ interface TemplateLauncherProps {
   presets: TemplatePreset[];
   /** 起動時に渡す BPM (アクティブデッキの effective BPM)。0 以下なら disabled。 */
   currentBpm: number;
-  onStart: (presetId: string, bpm: number) => void;
+  onStart: (presetId: string, bpm: number, reverse: boolean) => void;
 }
 
 export function TemplateLauncher({
@@ -15,6 +15,7 @@ export function TemplateLauncher({
   onStart,
 }: TemplateLauncherProps) {
   const [selected, setSelected] = useState<string>(presets[0]?.id ?? "");
+  const [reverse, setReverse] = useState<boolean>(false);
 
   if (presets.length === 0) return null;
 
@@ -34,16 +35,27 @@ export function TemplateLauncher({
           </option>
         ))}
       </select>
+      <label
+        className="transport-launcher-reverse"
+        title="Reverse: deck A↔B swap + crossfader 符号反転 で起動"
+      >
+        <input
+          type="checkbox"
+          checked={reverse}
+          onChange={(e) => setReverse(e.target.checked)}
+        />
+        <span>B→A</span>
+      </label>
       <button
         type="button"
         className="transport-launcher-start"
         disabled={!canStart}
         onClick={() => {
-          if (canStart) onStart(selected, currentBpm);
+          if (canStart) onStart(selected, currentBpm, reverse);
         }}
         title={
           canStart
-            ? `Start at ${currentBpm.toFixed(1)} BPM`
+            ? `Start at ${currentBpm.toFixed(1)} BPM${reverse ? " (B→A)" : ""}`
             : "Load a track on the active deck first"
         }
       >

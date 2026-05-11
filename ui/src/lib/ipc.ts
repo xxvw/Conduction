@@ -204,8 +204,8 @@ export const ipc = {
   getTemplatePreset(presetId: string) {
     return call<TemplateFull>("get_template_preset", { presetId });
   },
-  startTemplatePreset(presetId: string, bpm: number) {
-    return call<void>("start_template_preset", { presetId, bpm });
+  startTemplatePreset(presetId: string, bpm: number, reverse = false) {
+    return call<void>("start_template_preset", { presetId, bpm, reverse });
   },
   abortTemplate() {
     return call<void>("abort_template");

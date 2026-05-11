@@ -785,8 +785,12 @@ pub fn start_template_preset(
     library: State<'_, LibraryHandle>,
     preset_id: String,
     bpm: f32,
+    reverse: Option<bool>,
 ) -> CmdResult {
-    let preset = resolve_template_impl(&library, &preset_id)?;
+    let mut preset = resolve_template_impl(&library, &preset_id)?;
+    if reverse.unwrap_or(false) {
+        preset = preset.reversed();
+    }
     if !bpm.is_finite() || bpm <= 0.0 {
         return Err(format!("invalid bpm: {bpm}"));
     }

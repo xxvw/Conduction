@@ -213,8 +213,8 @@ export function App() {
   );
 
   const handleStartTemplate = useCallback(
-    (presetId: string, bpm: number) => {
-      void ipc.startTemplatePreset(presetId, bpm);
+    (presetId: string, bpm: number, reverse: boolean) => {
+      void ipc.startTemplatePreset(presetId, bpm, reverse);
     },
     [],
   );
@@ -593,7 +593,7 @@ function MixScreen({
   onKeySync: (deck: DeckId) => void;
   templatePresets: import("@/lib/ipc").TemplatePreset[];
   activeBpm: number;
-  onStartTemplate: (presetId: string, bpm: number) => void;
+  onStartTemplate: (presetId: string, bpm: number, reverse: boolean) => void;
   onAbortTemplate: () => void;
   focusedTarget: string;
   onFocus: (key: string) => void;

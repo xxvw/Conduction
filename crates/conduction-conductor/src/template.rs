@@ -93,6 +93,151 @@ pub struct Template {
     pub source: Option<String>,
 }
 
+impl BuiltInTarget {
+    /// Lua スクリプトで使う target_key 文字列に変換する。
+    /// 例: Crossfader → "crossfader", DeckEqLow{B} → "deck_eq_low.B"
+    pub fn to_lua_key(self) -> String {
+        let deck_str = |d: DeckSlot| match d {
+            DeckSlot::A => "A",
+            DeckSlot::B => "B",
+        };
+        match self {
+            Self::Crossfader => "crossfader".into(),
+            Self::MasterVolume => "master_volume".into(),
+            Self::DeckVolume { deck } => format!("deck_volume.{}", deck_str(deck)),
+            Self::DeckEqLow { deck } => format!("deck_eq_low.{}", deck_str(deck)),
+            Self::DeckEqMid { deck } => format!("deck_eq_mid.{}", deck_str(deck)),
+            Self::DeckEqHigh { deck } => format!("deck_eq_high.{}", deck_str(deck)),
+            Self::DeckFilter { deck } => format!("deck_filter.{}", deck_str(deck)),
+            Self::DeckEchoWet { deck } => format!("deck_echo_wet.{}", deck_str(deck)),
+            Self::DeckReverbWet { deck } => format!("deck_reverb_wet.{}", deck_str(deck)),
+        }
+    }
+
+    /// deck A/B を入れ替える。deck 付きでないターゲットはそのまま。
+    pub fn flip_deck(self) -> Self {
+        let flip = |d: DeckSlot| match d {
+            DeckSlot::A => DeckSlot::B,
+            DeckSlot::B => DeckSlot::A,
+        };
+        match self {
+            Self::Crossfader => Self::Crossfader,
+            Self::MasterVolume => Self::MasterVolume,
+            Self::DeckVolume { deck } => Self::DeckVolume { deck: flip(deck) },
+            Self::DeckEqLow { deck } => Self::DeckEqLow { deck: flip(deck) },
+            Self::DeckEqMid { deck } => Self::DeckEqMid { deck: flip(deck) },
+            Self::DeckEqHigh { deck } => Self::DeckEqHigh { deck: flip(deck) },
+            Self::DeckFilter { deck } => Self::DeckFilter { deck: flip(deck) },
+            Self::DeckEchoWet { deck } => Self::DeckEchoWet { deck: flip(deck) },
+            Self::DeckReverbWet { deck } => Self::DeckReverbWet { deck: flip(deck) },
+        }
+    }
+}
+
+/// 余計な小数点を出さずに数値を整形する (整数なら "32"、小数なら "0.55")。
+fn format_number(v: f64) -> String {
+    if v.fract().abs() < 1e-9 {
+        format!("{}", v as i64)
+    } else {
+        // 短く出るよう {:.4} ですらない方が good. 自然な書式で。
+        let s = format!("{}", v);
+        s
+    }
+}
+
+impl CurveType {
+    /// Lua スクリプトで使う curve 文字列を返す。
+    pub fn to_lua_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::EaseIn => "ease_in",
+            Self::EaseOut => "ease_out",
+            Self::EaseInOut => "ease_in_out",
+            Self::Step => "step",
+            Self::Hold => "hold",
+        }
+    }
+}
+
+impl Template {
+    /// 既存の Template を Conduction Lua スクリプトとして文字列化する。
+    /// 内蔵 preset を Duplicate した時に Script タブで開けるようにする。
+    /// 戻り値の文字列を `compile_lua_to_template` に渡すと、同じ Template が
+    /// (id/name 以外は) 再現される。
+    pub fn to_lua_source(&self) -> String {
+        let mut out = String::new();
+        out.push_str(&format!("-- {}\n", self.name));
+        out.push_str("-- Generated from a built-in preset. Edit as you like.\n\n");
+        out.push_str(&format!("set_duration({})\n\n", format_number(self.duration_beats)));
+        for track in &self.tracks {
+            out.push_str(&format!("-- {}\n", track.target.to_lua_key()));
+            for k in &track.keyframes {
+                let beat = match k.position {
+                    TimePosition::Beats(b) => b,
+                    TimePosition::Seconds(s) => {
+                        // 内蔵 preset は Beats しか使わないので fallback だけ用意。
+                        // 仮の BPM=128 で換算 (compile 時の bpm とは独立)。
+                        s * 128.0 / 60.0
+                    }
+                    TimePosition::BeatsFromEnd(b) => self.duration_beats - b,
+                };
+                out.push_str(&format!(
+                    "add_keyframe(\"{}\", {}, {}, \"{}\")\n",
+                    track.target.to_lua_key(),
+                    format_number(beat),
+                    format_number(k.value as f64),
+                    k.curve.to_lua_str(),
+                ));
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    /// Template を B→A 方向に反転する。
+    /// - 各 AutomationTrack の target を `flip_deck()` で入れ替え
+    /// - target が Crossfader の keyframe value は符号反転 (-1↔+1 対称)
+    /// - 他の target (DeckVolume / EQ / Filter / Echo / Reverb) は deck swap で完結し
+    ///   value 自体は変えない (deck A の EQ Low cut → deck B の EQ Low cut にそのまま運ぶ)
+    /// duration_beats / curve / position はそのまま。
+    pub fn reversed(&self) -> Template {
+        let tracks = self
+            .tracks
+            .iter()
+            .map(|t| {
+                let flipped_target = t.target.flip_deck();
+                let keyframes = t
+                    .keyframes
+                    .iter()
+                    .map(|k| {
+                        let value = if matches!(t.target, BuiltInTarget::Crossfader) {
+                            -k.value
+                        } else {
+                            k.value
+                        };
+                        Keyframe {
+                            position: k.position,
+                            value,
+                            curve: k.curve,
+                        }
+                    })
+                    .collect();
+                AutomationTrack {
+                    target: flipped_target,
+                    keyframes,
+                }
+            })
+            .collect();
+        Template {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            duration_beats: self.duration_beats,
+            tracks,
+            source: self.source.clone(),
+        }
+    }
+}
+
 impl Template {
     /// 内蔵プリセット: Long EQ Mix (32 bars = 128 beats)。
     /// クロスフェーダーで全体を A → B、Deck A の low EQ を後半でカット。
@@ -350,15 +495,31 @@ impl Template {
         }
     }
 
-    /// 内蔵プリセット一覧 (要件 §6.6 のプリセット 5 種)。
+    /// 内蔵プリセット一覧 (5 種 + それぞれの B→A 反転版 5 種)。
+    /// 各 preset には Duplicate 時に Script タブで開けるよう Lua source も持たせる。
     pub fn all_presets() -> Vec<Template> {
-        vec![
+        let base = [
             Self::long_eq_mix(),
             Self::quick_cut(),
             Self::breakdown_swap(),
             Self::echo_out(),
             Self::instant_swap(),
-        ]
+        ];
+        let mut out = Vec::with_capacity(base.len() * 2);
+        for b in base {
+            let mut original = b;
+            original.source = Some(original.to_lua_source());
+
+            // reversed 版: id に _rev suffix、name に " (B→A)" を足す
+            let mut rev = original.reversed();
+            rev.id = format!("{}_rev", original.id);
+            rev.name = format!("{} (B→A)", original.name);
+            rev.source = Some(rev.to_lua_source());
+
+            out.push(original);
+            out.push(rev);
+        }
+        out
     }
 }
 
@@ -506,5 +667,37 @@ mod tests {
         let v_end = evaluate_track(xfader, t.duration_beats, t.duration_beats, 128.0).unwrap();
         assert!((v0 + 1.0).abs() < 1e-6);
         assert!((v_end - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reversed_swaps_deck_and_negates_crossfader() {
+        let t = Template::long_eq_mix();
+        let r = t.reversed();
+        // duration / tracks 数は同じ
+        assert_eq!(r.duration_beats, t.duration_beats);
+        assert_eq!(r.tracks.len(), t.tracks.len());
+
+        // Crossfader: 開始 +1 / 終端 -1 になる
+        let xfader = r
+            .tracks
+            .iter()
+            .find(|tr| matches!(tr.target, BuiltInTarget::Crossfader))
+            .unwrap();
+        let v0 = evaluate_track(xfader, 0.0, r.duration_beats, 128.0).unwrap();
+        let v_end =
+            evaluate_track(xfader, r.duration_beats, r.duration_beats, 128.0).unwrap();
+        assert!((v0 - 1.0).abs() < 1e-6);
+        assert!((v_end + 1.0).abs() < 1e-6);
+
+        // long_eq_mix は DeckEqLow.A の cut を含む → reversed では DeckEqLow.B になる
+        let has_eq_low_b = r.tracks.iter().any(|tr| {
+            matches!(
+                tr.target,
+                BuiltInTarget::DeckEqLow {
+                    deck: DeckSlot::B
+                }
+            )
+        });
+        assert!(has_eq_low_b, "reversed long_eq_mix should target deck B EQ Low");
     }
 }

@@ -1570,6 +1570,19 @@ input[type="range"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
+.transport-launcher-reverse {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--c-ink-9);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.transport-launcher-reverse input {
+  cursor: pointer;
+}
 .transport-status {
   flex: 1;
   display: flex;
