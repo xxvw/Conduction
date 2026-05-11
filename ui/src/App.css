@@ -1964,6 +1964,57 @@ input[type="range"] {
   cursor: crosshair;
   touch-action: none;
 }
+.automation-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 140px;
+  background: var(--c-ink-1);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.automation-menu-section-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--c-ink-9);
+  text-transform: uppercase;
+  padding: 4px 8px;
+}
+.automation-menu-item {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--c-ink-11);
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: var(--fs-small);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-2);
+}
+.automation-menu-item:hover:not(:disabled) {
+  background: var(--c-ink-3);
+}
+.automation-menu-item[data-active] {
+  background: var(--c-ink-3);
+  border-color: var(--c-accent);
+}
+.automation-menu-item[data-variant="danger"] {
+  color: var(--c-danger);
+}
+.automation-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.automation-menu-divider {
+  height: 1px;
+  background: var(--c-ink-5);
+  margin: 4px 0;
+}
 
 /* --- YouTube screen --- */
 .youtube-screen {

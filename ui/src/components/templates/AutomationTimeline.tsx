@@ -29,6 +29,22 @@ interface DragState {
   value: number;
 }
 
+interface MenuState {
+  x: number; // client coords (viewport)
+  y: number;
+  trackIdx: number;
+  kfIdx: number;
+}
+
+const CURVE_OPTIONS: ReadonlyArray<{ kind: CurveType; label: string }> = [
+  { kind: "linear", label: "Linear" },
+  { kind: "ease_in", label: "Ease In" },
+  { kind: "ease_out", label: "Ease Out" },
+  { kind: "ease_in_out", label: "Ease In-Out" },
+  { kind: "step", label: "Step" },
+  { kind: "hold", label: "Hold" },
+];
+
 export function AutomationTimeline({
   template,
   height,
@@ -37,6 +53,7 @@ export function AutomationTimeline({
 }: AutomationTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [menu, setMenu] = useState<MenuState | null>(null);
 
   const computedHeight =
     height ?? X_AXIS_HEIGHT + Math.max(1, template.tracks.length) * TRACK_ROW_HEIGHT + 8;
@@ -249,36 +266,129 @@ export function AutomationTimeline({
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const hit = hitTest(mx, my);
-      if (!hit) return;
-      // 同 track 内最後の 1 個は残す (空 track は許容するが、複数→1個の境界で
-      // 「うっかり全消し」してしまうのを防ぐ意味で 1 個下限にする)
-      const track = template.tracks[hit.trackIdx]!;
-      if (track.keyframes.length <= 1) return;
-      const nextTracks = template.tracks.map((tr, ti) => {
-        if (ti !== hit.trackIdx) return tr;
-        return {
-          ...tr,
-          keyframes: tr.keyframes.filter((_, ki) => ki !== hit.kfIdx),
-        };
+      if (!hit) {
+        setMenu(null);
+        return;
+      }
+      setMenu({
+        x: e.clientX,
+        y: e.clientY,
+        trackIdx: hit.trackIdx,
+        kfIdx: hit.kfIdx,
       });
-      onTracksChange(nextTracks);
     },
-    [editable, hitTest, onTracksChange, template.tracks],
+    [editable, hitTest, onTracksChange],
   );
 
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const applyCurve = useCallback(
+    (curve: CurveType) => {
+      if (!menu || !onTracksChange) return;
+      const nextTracks = template.tracks.map((tr, ti) => {
+        if (ti !== menu.trackIdx) return tr;
+        const kfs = tr.keyframes.map((k, ki) =>
+          ki === menu.kfIdx ? { ...k, curve } : k,
+        );
+        return { ...tr, keyframes: kfs };
+      });
+      onTracksChange(nextTracks);
+      closeMenu();
+    },
+    [menu, onTracksChange, template.tracks, closeMenu],
+  );
+
+  const deleteKeyframe = useCallback(() => {
+    if (!menu || !onTracksChange) return;
+    const track = template.tracks[menu.trackIdx]!;
+    if (track.keyframes.length <= 1) {
+      closeMenu();
+      return;
+    }
+    const nextTracks = template.tracks.map((tr, ti) => {
+      if (ti !== menu.trackIdx) return tr;
+      return {
+        ...tr,
+        keyframes: tr.keyframes.filter((_, ki) => ki !== menu.kfIdx),
+      };
+    });
+    onTracksChange(nextTracks);
+    closeMenu();
+  }, [menu, onTracksChange, template.tracks, closeMenu]);
+
+  // popup の外側クリック / Escape で閉じる
+  useEffect(() => {
+    if (!menu) return;
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest("[data-automation-menu]")) closeMenu();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    // mousedown だと React の onClick 前に発火するため、しばらく遅らせる
+    const id = window.setTimeout(() => {
+      window.addEventListener("mousedown", onDocClick);
+    }, 0);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("mousedown", onDocClick);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu, closeMenu]);
+
+  const currentCurve =
+    menu && template.tracks[menu.trackIdx]?.keyframes[menu.kfIdx]?.curve;
+
   return (
-    <canvas
-      ref={canvasRef}
-      className="automation-timeline"
-      data-editable={editable || undefined}
-      aria-label={`Automation tracks for ${template.name}`}
-      onPointerDown={editable ? handlePointerDown : undefined}
-      onPointerMove={editable ? handlePointerMove : undefined}
-      onPointerUp={editable ? handlePointerUp : undefined}
-      onPointerCancel={editable ? handlePointerUp : undefined}
-      onDoubleClick={editable ? handleDoubleClick : undefined}
-      onContextMenu={editable ? handleContextMenu : undefined}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="automation-timeline"
+        data-editable={editable || undefined}
+        aria-label={`Automation tracks for ${template.name}`}
+        onPointerDown={editable ? handlePointerDown : undefined}
+        onPointerMove={editable ? handlePointerMove : undefined}
+        onPointerUp={editable ? handlePointerUp : undefined}
+        onPointerCancel={editable ? handlePointerUp : undefined}
+        onDoubleClick={editable ? handleDoubleClick : undefined}
+        onContextMenu={editable ? handleContextMenu : undefined}
+      />
+      {menu && (
+        <div
+          data-automation-menu
+          className="automation-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="automation-menu-section-label">Curve</div>
+          {CURVE_OPTIONS.map((c) => (
+            <button
+              key={c.kind}
+              type="button"
+              className="automation-menu-item"
+              data-active={c.kind === currentCurve || undefined}
+              onClick={() => applyCurve(c.kind)}
+            >
+              {c.label}
+            </button>
+          ))}
+          <div className="automation-menu-divider" />
+          <button
+            type="button"
+            className="automation-menu-item"
+            data-variant="danger"
+            onClick={deleteKeyframe}
+            disabled={
+              (template.tracks[menu.trackIdx]?.keyframes.length ?? 0) <= 1
+            }
+          >
+            Delete keyframe
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
