@@ -34,9 +34,11 @@ impl SetlistHandle {
         Self { library }
     }
 
-    pub fn list(&self) -> Vec<Setlist> {
-        // 失敗時は空リスト (UI 側は別 commands で原因を見られる)。
-        self.library.lock().list_setlists().unwrap_or_default()
+    pub fn list(&self) -> SetlistResult<Vec<Setlist>> {
+        self.library
+            .lock()
+            .list_setlists()
+            .map_err(SetlistError::Library)
     }
 
     pub fn get(&self, id: SetlistId) -> SetlistResult<Setlist> {
@@ -46,13 +48,11 @@ impl SetlistHandle {
             .ok_or(SetlistError::NotFound(id))
     }
 
-    pub fn create(&self, name: String) -> Setlist {
-        // create は基本失敗しないが、SQLite I/O エラー時にプレースホルダを返す
-        // (UI は次回の list でズレに気付く)。
-        match self.library.lock().create_setlist(name.clone()) {
-            Ok(s) => s,
-            Err(_) => Setlist::new(name),
-        }
+    pub fn create(&self, name: String) -> SetlistResult<Setlist> {
+        self.library
+            .lock()
+            .create_setlist(name)
+            .map_err(SetlistError::Library)
     }
 
     pub fn delete(&self, id: SetlistId) -> SetlistResult<()> {
