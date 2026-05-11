@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn waveform_round_trip() {
-        let mut lib = Library::in_memory().unwrap();
+        let lib = Library::in_memory().unwrap();
         let track = sample_track();
         lib.insert_track(&track).unwrap();
 
