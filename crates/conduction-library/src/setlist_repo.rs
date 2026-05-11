@@ -3,7 +3,7 @@
 //! `Library` の impl block を拡張する形で、setlist CRUD を提供する。
 //! 並び替えはトランザクション内で position を一括書き換え。
 
-use std::path::PathBuf;
+use std::collections::HashMap;
 
 use chrono::Utc;
 use conduction_core::{
@@ -501,42 +501,70 @@ impl Library {
 
     /// `.cset` JSON を読み、新しい setlist を作成する。
     /// track の解決は path → (title, artist) の順。いずれもヒットしない entry は missing_tracks に積む。
+    ///
+    /// この関数は parse_cset_payload + import_parsed_setlist のヘルパ。
+    /// 大きい payload を Library mutex 下で parse するのを避けたい場合は、
+    /// app 層で parse_cset_payload を先に呼び、ロック取得後に
+    /// import_parsed_setlist を呼ぶ二段にすること。
     pub fn import_setlist_json(&mut self, payload: &str) -> LibraryResult<SetlistImportReport> {
-        let env: CsetEnvelope = serde_json::from_str(payload)
-            .map_err(|e| LibraryError::Unsupported(format!("json parse: {e}")))?;
-        if env.format != CSET_FORMAT {
-            return Err(LibraryError::Unsupported(format!(
-                "unexpected format: {}",
-                env.format
-            )));
+        let env = parse_cset_payload(payload)?;
+        self.import_parsed_setlist(env)
+    }
+
+    /// 事前に parse 済みの `CsetEnvelope` を import する。
+    /// import 開始時に `list_tracks` を 1 回だけ実行して in-memory index を作り、
+    /// resolve_track で per-entry のフルスキャンを発生させないようにする。
+    pub fn import_parsed_setlist(
+        &mut self,
+        env: CsetEnvelope,
+    ) -> LibraryResult<SetlistImportReport> {
+        // index を 1 度だけ構築 (path 完全一致 / (title, artist) fuzzy 一致)。
+        let all_tracks = self.list_tracks()?;
+        let mut by_path: HashMap<String, TrackId> =
+            HashMap::with_capacity(all_tracks.len());
+        let mut by_title_artist: HashMap<(String, String), TrackId> =
+            HashMap::with_capacity(all_tracks.len());
+        for t in &all_tracks {
+            by_path.insert(t.path.to_string_lossy().into_owned(), t.id);
+            by_title_artist.insert(
+                (t.title.to_lowercase(), t.artist.to_lowercase()),
+                t.id,
+            );
         }
-        if env.version != CSET_VERSION {
-            return Err(LibraryError::Unsupported(format!(
-                "unsupported version: {}",
-                env.version
-            )));
-        }
+        let resolve = |meta: &CsetTrackMeta| -> Option<TrackId> {
+            if let Some(id) = by_path.get(&meta.path) {
+                return Some(*id);
+            }
+            let key = (meta.title.to_lowercase(), meta.artist.to_lowercase());
+            if !key.0.is_empty() && !key.1.is_empty() {
+                if let Some(id) = by_title_artist.get(&key) {
+                    return Some(*id);
+                }
+            }
+            None
+        };
 
         let setlist = self.create_setlist(env.setlist.name.clone())?;
         let mut resolved_entries = 0usize;
         let mut missing_tracks = Vec::new();
-
         let total_entries = env.setlist.entries.len();
+
         // (entry_id, transition) を後で適用するためのキュー
         let mut pending_transitions: Vec<(SetlistEntryId, CsetTransition)> = Vec::new();
 
         // 先に全エントリを resolve しておく。transition_to_next は「次のエントリへの
         // 遷移」なので、次のエントリが missing で skip されると意味が変わってしまう
         // (A→B の遷移が A→C に流れ込む)。lookahead が要るため二段にする。
+        // 解決は事前構築した HashMap index を使う (per-entry の list_tracks フルスキャン回避)。
         let resolved: Vec<(CsetEntry, Option<TrackId>)> = env
             .setlist
             .entries
             .into_iter()
             .map(|e| {
-                let id = self.resolve_track(&e.track_meta)?;
-                Ok::<_, LibraryError>((e, id))
+                let id = resolve(&e.track_meta);
+                (e, id)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
 
         for (i, (csv_entry, track_id_opt)) in resolved.iter().enumerate() {
             let Some(track_id) = track_id_opt else {
@@ -579,26 +607,28 @@ impl Library {
             missing_tracks,
         })
     }
+}
 
-    fn resolve_track(&self, meta: &CsetTrackMeta) -> LibraryResult<Option<TrackId>> {
-        // 1) path 完全一致
-        if let Some(t) = self.get_track_by_path(&PathBuf::from(&meta.path))? {
-            return Ok(Some(t.id));
-        }
-        // 2) (title, artist) で fuzzy 一致 (大文字小文字無視)
-        let title_l = meta.title.to_lowercase();
-        let artist_l = meta.artist.to_lowercase();
-        for t in self.list_tracks()? {
-            if !title_l.is_empty()
-                && !artist_l.is_empty()
-                && t.title.to_lowercase() == title_l
-                && t.artist.to_lowercase() == artist_l
-            {
-                return Ok(Some(t.id));
-            }
-        }
-        Ok(None)
+/// `.cset` の JSON 文字列を parse + バージョン検証する。
+/// `Library` の lock を必要としないので、大きい payload に対しては
+/// この関数を先に呼んでから `import_parsed_setlist` を呼ぶことで、
+/// mutex 保持時間を最小化できる。
+pub fn parse_cset_payload(payload: &str) -> LibraryResult<CsetEnvelope> {
+    let env: CsetEnvelope = serde_json::from_str(payload)
+        .map_err(|e| LibraryError::Unsupported(format!("json parse: {e}")))?;
+    if env.format != CSET_FORMAT {
+        return Err(LibraryError::Unsupported(format!(
+            "unexpected format: {}",
+            env.format
+        )));
     }
+    if env.version != CSET_VERSION {
+        return Err(LibraryError::Unsupported(format!(
+            "unsupported version: {}",
+            env.version
+        )));
+    }
+    Ok(env)
 }
 
 #[cfg(test)]
