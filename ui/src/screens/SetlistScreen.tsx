@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ipc,
+  type CueDto,
+  type CueTypeId,
   type SetlistDto,
   type SetlistEntryDto,
   type TempoMode,
@@ -277,6 +279,40 @@ function SetlistDetail({
     );
   }, [tracks, pickerQuery]);
 
+  // entry の track 一覧分の Cue を一括取得して、行に渡す。
+  // 並び替え / 追加 / 削除のたびに再取得するが、Library に対する read のみで軽い。
+  const trackIdsKey = useMemo(
+    () => setlist.entries.map((e) => e.track_id).join(","),
+    [setlist.entries],
+  );
+  const [cuesByTrack, setCuesByTrack] = useState<Map<string, CueDto[]>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    const ids = [...new Set(setlist.entries.map((e) => e.track_id))];
+    let cancelled = false;
+    Promise.all(
+      ids.map(async (id) => {
+        try {
+          return [id, await ipc.listCues(id)] as const;
+        } catch {
+          return [id, [] as CueDto[]] as const;
+        }
+      }),
+    ).then((pairs) => {
+      if (!cancelled) setCuesByTrack(new Map(pairs));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // trackIdsKey を依存に。entries そのものは serdeでよく変わるため。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackIdsKey]);
+
+  // Drag-and-drop: 現在ドラッグ中の entry id と、ドロップ先の hover index。
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+
   return (
     <>
       <header className="setlist-detail-header">
@@ -310,29 +346,79 @@ function SetlistDetail({
           <p className="hint">Empty setlist. Add tracks from the picker below.</p>
         ) : (
           <ol className="setlist-entry-list">
-            {setlist.entries.map((entry, idx) => (
-              <li key={entry.id} className="setlist-entry">
-                <SetlistEntryRow
-                  entry={entry}
-                  index={idx}
-                  total={setlist.entries.length}
-                  track={tracksById.get(entry.track_id) ?? null}
-                  presets={presets}
-                  onMoveUp={() =>
-                    idx > 0 && void onMoveEntry(entry.id, idx - 1)
+            {setlist.entries.map((entry, idx) => {
+              const nextEntry = setlist.entries[idx + 1];
+              return (
+                <li
+                  key={entry.id}
+                  className="setlist-entry"
+                  data-dragging={dragId === entry.id || undefined}
+                  data-drop-target={
+                    dropIndex === idx && dragId !== entry.id ? true : undefined
                   }
-                  onMoveDown={() =>
-                    idx < setlist.entries.length - 1 &&
-                    void onMoveEntry(entry.id, idx + 1)
-                  }
-                  onRemove={() => void onRemoveEntry(entry.id)}
-                  onSetTransition={(spec) =>
-                    void onSetTransition(entry.id, spec)
-                  }
-                  onLoadToDeck={onLoadToDeck}
-                />
-              </li>
-            ))}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragId(entry.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", entry.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (dragId && dragId !== entry.id) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      setDropIndex(idx);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    setDropIndex((cur) => (cur === idx ? null : cur));
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const id = dragId ?? e.dataTransfer.getData("text/plain");
+                    if (id && id !== entry.id) {
+                      void onMoveEntry(id, idx);
+                    }
+                    setDragId(null);
+                    setDropIndex(null);
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDropIndex(null);
+                  }}
+                >
+                  <SetlistEntryRow
+                    entry={entry}
+                    index={idx}
+                    total={setlist.entries.length}
+                    track={tracksById.get(entry.track_id) ?? null}
+                    nextTrack={
+                      nextEntry
+                        ? tracksById.get(nextEntry.track_id) ?? null
+                        : null
+                    }
+                    presets={presets}
+                    exitCues={cuesByTrack.get(entry.track_id) ?? []}
+                    entryCues={
+                      nextEntry
+                        ? cuesByTrack.get(nextEntry.track_id) ?? []
+                        : []
+                    }
+                    onMoveUp={() =>
+                      idx > 0 && void onMoveEntry(entry.id, idx - 1)
+                    }
+                    onMoveDown={() =>
+                      idx < setlist.entries.length - 1 &&
+                      void onMoveEntry(entry.id, idx + 1)
+                    }
+                    onRemove={() => void onRemoveEntry(entry.id)}
+                    onSetTransition={(spec) =>
+                      void onSetTransition(entry.id, spec)
+                    }
+                    onLoadToDeck={onLoadToDeck}
+                  />
+                </li>
+              );
+            })}
           </ol>
         )}
       </div>
@@ -375,7 +461,10 @@ function SetlistEntryRow({
   index,
   total,
   track,
+  nextTrack,
   presets,
+  exitCues,
+  entryCues,
   onMoveUp,
   onMoveDown,
   onRemove,
@@ -386,7 +475,10 @@ function SetlistEntryRow({
   index: number;
   total: number;
   track: TrackSummary | null;
+  nextTrack: TrackSummary | null;
   presets: TemplatePreset[];
+  exitCues: CueDto[];
+  entryCues: CueDto[];
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRemove: () => void;
@@ -399,6 +491,9 @@ function SetlistEntryRow({
   return (
     <div className="setlist-entry-card">
       <div className="setlist-entry-head">
+        <span className="setlist-entry-drag" title="Drag to reorder">
+          ⋮⋮
+        </span>
         <span className="setlist-entry-index">{index + 1}</span>
         <div className="setlist-entry-track">
           {track ? (
@@ -456,49 +551,136 @@ function SetlistEntryRow({
 
       {!isLast && (
         <div className="setlist-transition">
-          <span className="setlist-transition-label">→ Transition</span>
-          <select
-            value={tx?.template_id ?? ""}
-            onChange={(e) => {
-              const presetId = e.target.value;
-              if (!presetId) {
-                onSetTransition(null);
-                return;
-              }
-              onSetTransition({
-                template_id: presetId,
-                tempo_mode: tx?.tempo_mode ?? "linear_blend",
-                entry_cue: tx?.entry_cue ?? null,
-                exit_cue: tx?.exit_cue ?? null,
-              });
-            }}
-          >
-            <option value="">(no transition)</option>
-            {presets.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.duration_beats}b)
-              </option>
-            ))}
-          </select>
-          {tx && (
+          <div className="setlist-transition-row">
+            <span className="setlist-transition-label">→ Transition</span>
             <select
-              value={tx.tempo_mode}
-              onChange={(e) =>
+              value={tx?.template_id ?? ""}
+              onChange={(e) => {
+                const presetId = e.target.value;
+                if (!presetId) {
+                  onSetTransition(null);
+                  return;
+                }
                 onSetTransition({
-                  ...tx,
-                  tempo_mode: e.target.value as TempoMode,
-                })
-              }
+                  template_id: presetId,
+                  tempo_mode: tx?.tempo_mode ?? "linear_blend",
+                  entry_cue: tx?.entry_cue ?? null,
+                  exit_cue: tx?.exit_cue ?? null,
+                });
+              }}
             >
-              {(Object.keys(TEMPO_MODE_LABELS) as TempoMode[]).map((m) => (
-                <option key={m} value={m}>
-                  {TEMPO_MODE_LABELS[m]}
+              <option value="">(no transition)</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.duration_beats}b)
                 </option>
               ))}
             </select>
+            {tx && (
+              <select
+                value={tx.tempo_mode}
+                onChange={(e) =>
+                  onSetTransition({
+                    ...tx,
+                    tempo_mode: e.target.value as TempoMode,
+                  })
+                }
+              >
+                {(Object.keys(TEMPO_MODE_LABELS) as TempoMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {TEMPO_MODE_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          {tx && (
+            <div className="setlist-transition-cues">
+              <label className="setlist-cue-pick">
+                <span className="setlist-cue-pick-label">Exit @</span>
+                <select
+                  value={tx.exit_cue ?? ""}
+                  onChange={(e) =>
+                    onSetTransition({
+                      ...tx,
+                      exit_cue: e.target.value || null,
+                    })
+                  }
+                  disabled={exitCues.length === 0}
+                  title={
+                    exitCues.length === 0
+                      ? "No cues on this track"
+                      : "Exit point on this track"
+                  }
+                >
+                  <option value="">(auto)</option>
+                  {exitCues.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {cueOptionLabel(c, track?.bpm ?? 0)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="setlist-cue-pick">
+                <span className="setlist-cue-pick-label">Enter @</span>
+                <select
+                  value={tx.entry_cue ?? ""}
+                  onChange={(e) =>
+                    onSetTransition({
+                      ...tx,
+                      entry_cue: e.target.value || null,
+                    })
+                  }
+                  disabled={entryCues.length === 0}
+                  title={
+                    entryCues.length === 0
+                      ? nextTrack
+                        ? "No cues on next track"
+                        : "No next track"
+                      : "Entry point on the next track"
+                  }
+                >
+                  <option value="">(auto)</option>
+                  {entryCues.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {cueOptionLabel(c, nextTrack?.bpm ?? 0)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           )}
         </div>
       )}
     </div>
   );
+}
+
+function cueOptionLabel(c: CueDto, trackBpm: number): string {
+  const bpm = trackBpm > 0 ? trackBpm : c.bpm_at_cue;
+  const sec = bpm > 0 ? (c.position_beats * 60) / bpm : 0;
+  const mm = Math.floor(sec / 60);
+  const ss = Math.floor(sec % 60)
+    .toString()
+    .padStart(2, "0");
+  return `${cueTypeLabel(c.cue_type)} · ${mm}:${ss}`;
+}
+
+function cueTypeLabel(t: CueTypeId): string {
+  switch (t) {
+    case "drop":
+      return "Drop";
+    case "intro_start":
+      return "Intro In";
+    case "intro_end":
+      return "Intro End";
+    case "breakdown":
+      return "Breakdown";
+    case "outro":
+      return "Outro";
+    case "hot_cue":
+      return "Hot Cue";
+    case "custom_hot_cue":
+      return "Custom";
+  }
 }

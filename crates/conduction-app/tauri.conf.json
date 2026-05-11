@@ -27,7 +27,8 @@
         "resizable": true,
         "decorations": true,
         "fullscreen": false,
-        "theme": "Dark"
+        "theme": "Dark",
+        "dragDropEnabled": false
       }
     ],
     "security": {
