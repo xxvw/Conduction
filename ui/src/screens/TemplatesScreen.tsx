@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AutomationTimeline } from "@/components/templates/AutomationTimeline";
 import {
@@ -18,6 +18,13 @@ export function TemplatesScreen() {
   const [saving, setSaving] = useState<boolean>(false);
   // 編集中の tracks。null なら未編集。
   const [draftTracks, setDraftTracks] = useState<AutomationTrack[] | null>(null);
+
+  // async ハンドラから「現在の選択 ID」を読むための ref。
+  // closure に閉じ込めた selectedId は古くなるので、await 後の判定には ref を使う。
+  const selectedIdRef = useRef<string | null>(selectedId);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const refreshPresets = useCallback(async (keepId?: string | null) => {
     try {
@@ -86,6 +93,7 @@ export function TemplatesScreen() {
 
   const handleDuplicate = useCallback(async () => {
     if (!detail) return;
+    const sourceId = detail.id;
     setSaving(true);
     try {
       const dup: TemplateFull = {
@@ -96,7 +104,10 @@ export function TemplatesScreen() {
         tracks: detail.tracks,
       };
       const saved = await ipc.saveUserTemplate(dup);
-      await refreshPresets(saved.id);
+      // Duplicate 起動時の選択から変わっていなければ新しい dup へ遷移、
+      // 変わっていれば現在の選択を尊重して refresh だけする。
+      const stillOnSource = selectedIdRef.current === sourceId;
+      await refreshPresets(stillOnSource ? saved.id : undefined);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -108,12 +119,18 @@ export function TemplatesScreen() {
     if (!detail || !isUserSelected) return;
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === detail.name) return;
+    const targetId = detail.id;
     setSaving(true);
     try {
       const updated: TemplateFull = { ...detail, name: trimmed };
       const saved = await ipc.saveUserTemplate(updated);
-      setDetail(saved);
-      await refreshPresets(saved.id);
+      // 競合チェック: save 中にユーザーが別 template に切り替えていたら
+      // detail / selection を上書きしない (refresh だけ走らせる)
+      const stillSelected = selectedIdRef.current === targetId;
+      if (stillSelected) {
+        setDetail(saved);
+      }
+      await refreshPresets(stillSelected ? saved.id : undefined);
     } catch (e) {
       setError(String(e));
       setNameDraft(detail.name);
@@ -124,13 +141,17 @@ export function TemplatesScreen() {
 
   const handleSaveDraft = useCallback(async () => {
     if (!detail || !isUserSelected || !draftTracks) return;
+    const targetId = detail.id;
     setSaving(true);
     try {
       const updated: TemplateFull = { ...detail, tracks: draftTracks };
       const saved = await ipc.saveUserTemplate(updated);
-      setDetail(saved);
-      setDraftTracks(null);
-      await refreshPresets(saved.id);
+      const stillSelected = selectedIdRef.current === targetId;
+      if (stillSelected) {
+        setDetail(saved);
+        setDraftTracks(null);
+      }
+      await refreshPresets(stillSelected ? saved.id : undefined);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -145,10 +166,14 @@ export function TemplatesScreen() {
   const handleDelete = useCallback(async () => {
     if (!detail || !isUserSelected) return;
     if (!window.confirm(`Delete "${detail.name}"?`)) return;
+    const targetId = detail.id;
     setSaving(true);
     try {
-      await ipc.deleteUserTemplate(detail.id);
-      setSelectedId(null);
+      await ipc.deleteUserTemplate(targetId);
+      // 削除中にユーザーが別の preset に切り替えていたら、その選択を尊重する。
+      if (selectedIdRef.current === targetId) {
+        setSelectedId(null);
+      }
       await refreshPresets();
     } catch (e) {
       setError(String(e));
