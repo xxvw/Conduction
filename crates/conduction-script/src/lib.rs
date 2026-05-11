@@ -28,6 +28,52 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// User source の前に毎回評価する Lua prelude。
+/// 純 Lua で書ける汎用ヘルパは Rust 側 binding に頼らず、ここで提供する。
+const PRELUDE: &str = r#"
+-- clamp(x, mn, mx): mn 以上 mx 以下に丸める。
+function clamp(x, mn, mx)
+  if x < mn then return mn end
+  if x > mx then return mx end
+  return x
+end
+
+-- lerp(a, b, t): 線形補間。t は 0..1 に clamp してから計算。
+function lerp(a, b, t)
+  if t < 0 then t = 0 elseif t > 1 then t = 1 end
+  return a + (b - a) * t
+end
+
+-- smoothstep(a, b, t): Hermite smooth (3t^2 - 2t^3) で 0..1 を補間。
+function smoothstep(a, b, t)
+  if t < 0 then t = 0 elseif t > 1 then t = 1 end
+  local s = t * t * (3 - 2 * t)
+  return a + (b - a) * s
+end
+
+-- each_bar(callback): 0 拍目から duration_beats まで 4 拍 (= 1 bar) ごとに
+-- callback(beat, bar_index) を呼ぶ。
+function each_bar(callback)
+  local bar = 0
+  for b = 0, duration_beats, 4 do
+    callback(b, bar)
+    bar = bar + 1
+  end
+end
+
+-- each_phrase(beats_per_phrase, callback): 指定拍数ごとに callback(beat, phrase_index) を呼ぶ。
+function each_phrase(beats_per_phrase, callback)
+  if beats_per_phrase == nil or beats_per_phrase <= 0 then
+    error("each_phrase: beats_per_phrase must be > 0")
+  end
+  local idx = 0
+  for b = 0, duration_beats, beats_per_phrase do
+    callback(b, idx)
+    idx = idx + 1
+  end
+end
+"#;
+
 use conduction_conductor::template::{
     AutomationTrack, BuiltInTarget, CurveType, DeckSlot, Keyframe, Template, TimePosition,
 };
@@ -203,6 +249,12 @@ pub fn compile_lua_to_template(
         )?;
         lua.globals().set("add_track", f)?;
     }
+
+    // Prelude を先に評価して各種ヘルパを定義する。Rust 側に新しい binding を増やさず、
+    // 純 Lua で組める範囲のものはここで提供する。
+    lua.load(PRELUDE)
+        .set_name("[conduction prelude]")
+        .exec()?;
 
     // 評価。
     lua.load(source).exec()?;
@@ -449,6 +501,51 @@ mod tests {
             end
         "#;
         let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
+        assert_eq!(t.tracks[0].keyframes.len(), 5);
+    }
+
+    #[test]
+    fn prelude_clamp_lerp_smoothstep() {
+        let src = r#"
+            -- clamp は範囲外を弾く
+            add_keyframe("crossfader", 0, clamp(2.5, -1, 1))
+            -- lerp は 0..1 を範囲外で clamp
+            add_keyframe("crossfader", 8, lerp(0, 1, 0.5))
+            -- smoothstep も同様、0.5 は 0.5 (3*0.25 - 2*0.125 = 0.75-0.25 = 0.5)
+            add_keyframe("master_volume", 0, smoothstep(0, 2, 0.5))
+        "#;
+        let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
+        assert_eq!(t.tracks.len(), 2);
+        let xf = &t.tracks[0];
+        assert!((xf.keyframes[0].value - 1.0).abs() < 1e-5); // clamp(2.5, -1, 1) = 1
+        assert!((xf.keyframes[1].value - 0.5).abs() < 1e-5); // lerp(0,1,0.5)
+        let mv = &t.tracks[1];
+        assert!((mv.keyframes[0].value - 1.0).abs() < 1e-5); // smoothstep(0,2,0.5) = 1.0
+    }
+
+    #[test]
+    fn prelude_each_bar_iterates() {
+        let src = r#"
+            set_duration(16)
+            each_bar(function(beat, bar)
+              add_keyframe("crossfader", beat, bar / 4 - 1)
+            end)
+        "#;
+        let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
+        // 0, 4, 8, 12, 16 の 5 個
+        assert_eq!(t.tracks[0].keyframes.len(), 5);
+    }
+
+    #[test]
+    fn prelude_each_phrase_iterates() {
+        let src = r#"
+            set_duration(32)
+            each_phrase(8, function(beat, phrase)
+              add_keyframe("deck_filter.A", beat, math.sin(phrase) * 0.5)
+            end)
+        "#;
+        let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
+        // 0, 8, 16, 24, 32 の 5 個
         assert_eq!(t.tracks[0].keyframes.len(), 5);
     }
 

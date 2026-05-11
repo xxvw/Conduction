@@ -1,9 +1,12 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useState } from "react";
+import type * as monaco from "monaco-editor";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ipc, type TemplateFull } from "@/lib/ipc";
 
 import { CONDUCTION_THEME, registerConductionLuaProvider } from "./monacoSetup";
+
+const MARKER_OWNER = "conduction-lua";
 
 interface ScriptEditorProps {
   template: TemplateFull;
@@ -38,15 +41,60 @@ export function ScriptEditor({
   const [compiling, setCompiling] = useState(false);
   const [lastCompiledAt, setLastCompiledAt] = useState<number | null>(null);
 
+  // Monaco の editor / monaco instance への参照。マーカー操作用。
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<typeof monaco | null>(null);
+
+  // Compile エラーから { line, message } を抜き出して setModelMarkers に渡す。
+  // Lua のエラーは `[string "..."]:LINE: MESSAGE` 形式。先頭の prefix を取り除いて
+  // line と純粋なメッセージを取る。失敗時 (パース不能) は line 1 にまるごと貼る。
+  const setEditorError = useCallback((raw: string | null) => {
+    const editor = editorRef.current;
+    const mn = monacoRef.current;
+    if (!editor || !mn) return;
+    const model = editor.getModel();
+    if (!model) return;
+    if (!raw) {
+      mn.editor.setModelMarkers(model, MARKER_OWNER, []);
+      return;
+    }
+    // 例: "Lua runtime error: [string \"<lua>\"]:5: attempt to call a nil value (global 'foo')"
+    const m = /\[string ".*?"\]:(\d+):\s*([\s\S]*)$/.exec(raw)
+      ?? /:(\d+):\s*([\s\S]*)$/.exec(raw);
+    let lineNum = 1;
+    let message = raw;
+    if (m) {
+      lineNum = Math.max(1, parseInt(m[1]!, 10));
+      message = m[2]!.trim() || raw;
+    }
+    // 該当行の長さを取得して波線を引く範囲を決める
+    const totalLines = model.getLineCount();
+    const safeLine = Math.min(lineNum, totalLines);
+    const lineContent = model.getLineContent(safeLine);
+    mn.editor.setModelMarkers(model, MARKER_OWNER, [
+      {
+        severity: mn.MarkerSeverity.Error,
+        message,
+        startLineNumber: safeLine,
+        startColumn: 1,
+        endLineNumber: safeLine,
+        endColumn: Math.max(2, lineContent.length + 1),
+        source: "conduction-lua",
+      },
+    ]);
+  }, []);
+
   useEffect(() => {
     setSource(template.source ?? STARTER_SCRIPT);
     setError(null);
+    setEditorError(null);
     setLastCompiledAt(null);
-  }, [template.id]);
+  }, [template.id, setEditorError]);
 
   const handleCompile = useCallback(async () => {
     setCompiling(true);
     setError(null);
+    setEditorError(null);
     try {
       const compiled = await ipc.compileLuaTemplate({
         source,
@@ -57,7 +105,9 @@ export function ScriptEditor({
       onCompileSuccess(compiled);
       setLastCompiledAt(Date.now());
     } catch (e) {
-      setError(String(e));
+      const msg = String(e);
+      setError(msg);
+      setEditorError(msg);
     } finally {
       setCompiling(false);
     }
@@ -67,9 +117,12 @@ export function ScriptEditor({
     template.id,
     template.name,
     onCompileSuccess,
+    setEditorError,
   ]);
 
   const handleMount: OnMount = useCallback((editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
     registerConductionLuaProvider();
     // Cmd/Ctrl+S は OS の保存と紛らわしいので、Cmd/Ctrl+Enter で Compile。
     editor.addCommand(

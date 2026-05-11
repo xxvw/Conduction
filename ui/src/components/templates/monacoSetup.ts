@@ -75,9 +75,9 @@ export function registerConductionLuaProvider() {
       ...luaLanguage.tokenizer,
       // root の先頭に独自ルールを差し込み、Lua 既存のルールはあとで適用させる。
       root: [
-        // 関数 (set_duration / add_keyframe / add_track)
+        // 関数 (set_duration / add_keyframe / add_track) と prelude ヘルパ
         [
-          /\b(?:set_duration|add_keyframe|add_track)\b/,
+          /\b(?:set_duration|add_keyframe|add_track|clamp|lerp|smoothstep|each_bar|each_phrase)\b/,
           "keyword.conduction",
         ],
         // 定数 (duration_beats)
@@ -218,6 +218,61 @@ export function registerConductionLuaProvider() {
           insertText: "duration_beats",
           documentation: "テンプレート全長 (拍)。set_duration で変更可能。",
           detail: "number",
+          range,
+        },
+      );
+
+      // --- Prelude ヘルパ (Lua 側で定義済みのユーティリティ) ---
+      suggestions.push(
+        {
+          label: "clamp",
+          kind: ItemKind.Function,
+          insertText: "clamp(${1:x}, ${2:min}, ${3:max})",
+          insertTextRules: SnippetRule,
+          documentation: "clamp(x, min, max) — x を min..max に丸めて返す。",
+          detail: "(x, min, max) — prelude",
+          range,
+        },
+        {
+          label: "lerp",
+          kind: ItemKind.Function,
+          insertText: "lerp(${1:a}, ${2:b}, ${3:t})",
+          insertTextRules: SnippetRule,
+          documentation:
+            "lerp(a, b, t) — 線形補間。t は 0..1 に clamp される。",
+          detail: "(a, b, t) — prelude",
+          range,
+        },
+        {
+          label: "smoothstep",
+          kind: ItemKind.Function,
+          insertText: "smoothstep(${1:a}, ${2:b}, ${3:t})",
+          insertTextRules: SnippetRule,
+          documentation:
+            "smoothstep(a, b, t) — Hermite smooth で a..b を補間。",
+          detail: "(a, b, t) — prelude",
+          range,
+        },
+        {
+          label: "each_bar",
+          kind: ItemKind.Function,
+          insertText:
+            "each_bar(function(beat, bar)\n\t$0\nend)",
+          insertTextRules: SnippetRule,
+          documentation:
+            "each_bar(callback) — 4 拍ごとに callback(beat, bar) を呼ぶ。",
+          detail: "(callback) — prelude",
+          range,
+        },
+        {
+          label: "each_phrase",
+          kind: ItemKind.Function,
+          insertText:
+            "each_phrase(${1:8}, function(beat, phrase)\n\t$0\nend)",
+          insertTextRules: SnippetRule,
+          documentation:
+            "each_phrase(beats_per_phrase, callback) — 指定拍数ごとに反復。",
+          detail: "(beats_per_phrase, callback) — prelude",
           range,
         },
       );
@@ -368,6 +423,14 @@ export function registerConductionLuaProvider() {
         add_track:
           "`add_track(target, keyframes_table)` — keyframes をまとめて 1 つの target に追加。",
         duration_beats: "テンプレート全長 (拍)。`set_duration` で変更可能。",
+        clamp: "`clamp(x, min, max)` — x を min..max に丸めて返す。",
+        lerp: "`lerp(a, b, t)` — 線形補間。t は 0..1 に clamp される。",
+        smoothstep:
+          "`smoothstep(a, b, t)` — Hermite smooth (3t² - 2t³) で a..b を補間。",
+        each_bar:
+          "`each_bar(callback)` — 4 拍 (1 bar) ごとに callback(beat, bar_index) を呼ぶ。",
+        each_phrase:
+          "`each_phrase(beats_per_phrase, callback)` — 指定拍数ごとに callback(beat, phrase_index) を呼ぶ。",
       };
       const doc = fns[word.word];
       if (!doc) return null;
