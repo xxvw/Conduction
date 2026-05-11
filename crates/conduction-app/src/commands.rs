@@ -18,7 +18,9 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
+use crate::setlist_state::SetlistHandle;
 use conduction_conductor::Template;
+use conduction_core::{Setlist, SetlistEntry, SetlistEntryId, SetlistId, TransitionSpec};
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
@@ -547,6 +549,102 @@ pub fn delete_track(library: State<'_, LibraryHandle>, id: String) -> Result<(),
         lib.delete_track(TrackId::from_uuid(uuid))
             .map_err(|e| e.to_string())
     })
+}
+
+// ======== Setlists (Phase A1 — in-memory CRUD) ========
+
+fn parse_setlist_id(s: &str) -> CmdResult<SetlistId> {
+    let uuid = Uuid::parse_str(s).map_err(|e| format!("invalid setlist id: {e}"))?;
+    Ok(SetlistId::from_uuid(uuid))
+}
+
+fn parse_setlist_entry_id(s: &str) -> CmdResult<SetlistEntryId> {
+    let uuid = Uuid::parse_str(s).map_err(|e| format!("invalid setlist entry id: {e}"))?;
+    Ok(SetlistEntryId::from_uuid(uuid))
+}
+
+#[tauri::command]
+pub fn list_setlists(setlists: State<'_, SetlistHandle>) -> Vec<Setlist> {
+    setlists.list()
+}
+
+#[tauri::command]
+pub fn create_setlist(
+    setlists: State<'_, SetlistHandle>,
+    name: String,
+) -> Setlist {
+    setlists.create(name)
+}
+
+#[tauri::command]
+pub fn delete_setlist(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+) -> CmdResult<()> {
+    let sid = parse_setlist_id(&id)?;
+    setlists.delete(sid).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_setlist(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+    name: String,
+) -> CmdResult<Setlist> {
+    let sid = parse_setlist_id(&id)?;
+    setlists.rename(sid, name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn setlist_add_entry(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+    track_id: String,
+) -> CmdResult<SetlistEntry> {
+    let sid = parse_setlist_id(&id)?;
+    let tuuid = Uuid::parse_str(&track_id).map_err(|e| format!("invalid track id: {e}"))?;
+    setlists
+        .add_entry(sid, conduction_core::TrackId::from_uuid(tuuid))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn setlist_remove_entry(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+    entry_id: String,
+) -> CmdResult<()> {
+    let sid = parse_setlist_id(&id)?;
+    let eid = parse_setlist_entry_id(&entry_id)?;
+    setlists.remove_entry(sid, eid).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn setlist_move_entry(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+    entry_id: String,
+    new_index: i64,
+) -> CmdResult<Setlist> {
+    let sid = parse_setlist_id(&id)?;
+    let eid = parse_setlist_entry_id(&entry_id)?;
+    setlists
+        .move_entry(sid, eid, new_index)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn setlist_set_transition(
+    setlists: State<'_, SetlistHandle>,
+    id: String,
+    entry_id: String,
+    spec: Option<TransitionSpec>,
+) -> CmdResult<SetlistEntry> {
+    let sid = parse_setlist_id(&id)?;
+    let eid = parse_setlist_entry_id(&entry_id)?;
+    setlists
+        .set_transition(sid, eid, spec)
+        .map_err(|e| e.to_string())
 }
 
 // ======== Templates (transition 自動オートメーション) ========

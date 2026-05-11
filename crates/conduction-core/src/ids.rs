@@ -43,6 +43,8 @@ macro_rules! newtype_id {
 newtype_id!(TrackId);
 newtype_id!(CueId);
 newtype_id!(TemplateId);
+newtype_id!(SetlistId);
+newtype_id!(SetlistEntryId);
 
 #[cfg(test)]
 mod tests {

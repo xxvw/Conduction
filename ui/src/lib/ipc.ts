@@ -157,6 +157,40 @@ export const ipc = {
     return call<number>("inject_demo_cues");
   },
 
+  // --- Setlists ---
+  listSetlists() {
+    return call<SetlistDto[]>("list_setlists");
+  },
+  createSetlist(name: string) {
+    return call<SetlistDto>("create_setlist", { name });
+  },
+  deleteSetlist(id: string) {
+    return call<void>("delete_setlist", { id });
+  },
+  renameSetlist(id: string, name: string) {
+    return call<SetlistDto>("rename_setlist", { id, name });
+  },
+  setlistAddEntry(id: string, trackId: string) {
+    return call<SetlistEntryDto>("setlist_add_entry", { id, trackId });
+  },
+  setlistRemoveEntry(id: string, entryId: string) {
+    return call<void>("setlist_remove_entry", { id, entryId });
+  },
+  setlistMoveEntry(id: string, entryId: string, newIndex: number) {
+    return call<SetlistDto>("setlist_move_entry", { id, entryId, newIndex });
+  },
+  setlistSetTransition(
+    id: string,
+    entryId: string,
+    spec: TransitionSpec | null,
+  ) {
+    return call<SetlistEntryDto>("setlist_set_transition", {
+      id,
+      entryId,
+      spec,
+    });
+  },
+
   // --- Templates ---
   listTemplatePresets() {
     return call<TemplatePreset[]>("list_template_presets");
@@ -346,6 +380,34 @@ export interface ResourceStats {
   cpu_percent: number;
   memory_mb: number;
   logical_cores: number;
+}
+
+// --- Setlist ---
+export type TempoMode =
+  | "hold_source"
+  | "match_target"
+  | "linear_blend"
+  | "master_tempo";
+
+export interface TransitionSpec {
+  template_id: string;
+  tempo_mode: TempoMode;
+  entry_cue?: string | null;
+  exit_cue?: string | null;
+}
+
+export interface SetlistEntryDto {
+  id: string;
+  track_id: string;
+  play_from_cue?: string | null;
+  play_until_cue?: string | null;
+  transition_to_next?: TransitionSpec | null;
+}
+
+export interface SetlistDto {
+  id: string;
+  name: string;
+  entries: SetlistEntryDto[];
 }
 
 export interface KeybindingEntry {

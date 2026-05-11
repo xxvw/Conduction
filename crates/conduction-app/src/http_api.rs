@@ -58,6 +58,7 @@ use crate::commands::{
 };
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
+use crate::setlist_state::SetlistHandle;
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
 use crate::youtube;
 use conduction_download::{AudioFormat, VideoSearchResult};
@@ -71,6 +72,7 @@ pub struct AppState {
     pub library: LibraryHandle,
     pub settings: SettingsHandle,
     pub stats: SystemStatsHandle,
+    pub setlists: SetlistHandle,
 }
 
 /// API 起動。専用スレッドで tokio runtime を立ててから axum を block_on する。
@@ -162,6 +164,16 @@ fn build_router(state: AppState) -> Router {
         .route("/api/templates/override", post(override_param))
         .route("/api/templates/resume", post(resume_param))
         .route("/api/templates/commit", post(commit_param))
+        .route("/api/setlists", get(list_setlists).post(create_setlist))
+        .route("/api/setlists/:id", delete(delete_setlist))
+        .route(
+            "/api/setlists/:id/entries",
+            post(setlist_add_entry),
+        )
+        .route(
+            "/api/setlists/:id/entries/:entry_id",
+            delete(setlist_remove_entry),
+        )
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
@@ -1042,6 +1054,96 @@ async fn commit_param(
     Ok(StatusCode::OK)
 }
 
+// ---- Setlists -----------------------------------------------------------
+
+#[utoipa::path(get, path = "/api/setlists", responses((status = 200, body = Object)))]
+async fn list_setlists(State(s): State<AppState>) -> Json<Vec<conduction_core::Setlist>> {
+    Json(s.setlists.list())
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CreateSetlistRequest {
+    pub name: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/setlists",
+    request_body = CreateSetlistRequest,
+    responses((status = 200, body = Object))
+)]
+async fn create_setlist(
+    State(s): State<AppState>,
+    Json(body): Json<CreateSetlistRequest>,
+) -> Json<conduction_core::Setlist> {
+    Json(s.setlists.create(body.name))
+}
+
+#[utoipa::path(delete, path = "/api/setlists/{id}", responses((status = 200)))]
+async fn delete_setlist(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let uuid = Uuid::parse_str(&id)
+        .map_err(|e| ApiError::bad_request(format!("invalid setlist id: {e}")))?;
+    s.setlists
+        .delete(conduction_core::SetlistId::from_uuid(uuid))
+        .map_err(|e| ApiError::not_found(e.to_string()))?;
+    Ok(StatusCode::OK)
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct AddSetlistEntryRequest {
+    pub track_id: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/setlists/{id}/entries",
+    request_body = AddSetlistEntryRequest,
+    responses((status = 200, body = Object))
+)]
+async fn setlist_add_entry(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<AddSetlistEntryRequest>,
+) -> ApiResult<Json<conduction_core::SetlistEntry>> {
+    let sid_uuid = Uuid::parse_str(&id)
+        .map_err(|e| ApiError::bad_request(format!("invalid setlist id: {e}")))?;
+    let tid_uuid = Uuid::parse_str(&body.track_id)
+        .map_err(|e| ApiError::bad_request(format!("invalid track id: {e}")))?;
+    let entry = s
+        .setlists
+        .add_entry(
+            conduction_core::SetlistId::from_uuid(sid_uuid),
+            conduction_core::TrackId::from_uuid(tid_uuid),
+        )
+        .map_err(|e| ApiError::not_found(e.to_string()))?;
+    Ok(Json(entry))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/setlists/{id}/entries/{entry_id}",
+    responses((status = 200))
+)]
+async fn setlist_remove_entry(
+    State(s): State<AppState>,
+    Path((id, entry_id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    let sid_uuid = Uuid::parse_str(&id)
+        .map_err(|e| ApiError::bad_request(format!("invalid setlist id: {e}")))?;
+    let eid_uuid = Uuid::parse_str(&entry_id)
+        .map_err(|e| ApiError::bad_request(format!("invalid entry id: {e}")))?;
+    s.setlists
+        .remove_entry(
+            conduction_core::SetlistId::from_uuid(sid_uuid),
+            conduction_core::SetlistEntryId::from_uuid(eid_uuid),
+        )
+        .map_err(|e| ApiError::not_found(e.to_string()))?;
+    Ok(StatusCode::OK)
+}
+
 // ---- Cue dynamic matching ----------------------------------------------
 
 #[utoipa::path(
@@ -1156,6 +1258,11 @@ pub struct HealthResponse {
         override_param,
         resume_param,
         commit_param,
+        list_setlists,
+        create_setlist,
+        delete_setlist,
+        setlist_add_entry,
+        setlist_remove_entry,
     ),
     components(schemas(
         HealthResponse,
@@ -1199,6 +1306,8 @@ pub struct HealthResponse {
         crate::audio_engine::AutomationModeEntry,
         OverrideRequest,
         ResumeRequest,
+        CreateSetlistRequest,
+        AddSetlistEntryRequest,
     )),
     tags(
         (name = "status", description = "Mixer/deck snapshot"),
@@ -1211,6 +1320,7 @@ pub struct HealthResponse {
         (name = "cue", description = "Typed cues (intro/breakdown/drop/outro/...) for dynamic matching"),
         (name = "match", description = "Dynamic cue matching from active deck state"),
         (name = "template", description = "Transition templates: list presets / start / abort"),
+        (name = "setlist", description = "Setlists (Phase A1: in-memory only)"),
     )
 )]
 struct ApiDoc;

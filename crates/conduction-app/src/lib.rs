@@ -9,6 +9,7 @@ pub mod commands;
 pub mod http_api;
 pub mod library_state;
 pub mod settings;
+pub mod setlist_state;
 pub mod system_stats;
 pub mod youtube;
 
@@ -25,6 +26,7 @@ pub fn run() {
     let audio = audio_engine::spawn(main_device_name, cue_device_name)
         .expect("audio engine must start");
     let library = library_state::LibraryHandle::open_default().expect("library must open");
+    let setlists = setlist_state::SetlistHandle::new();
     let stats = system_stats::SystemStatsHandle::new();
     info!("conduction-app booting");
 
@@ -35,6 +37,7 @@ pub fn run() {
             library: library.clone(),
             settings: settings.clone(),
             stats: stats.clone(),
+            setlists: setlists.clone(),
         },
         http_api::DEFAULT_HTTP_PORT,
     );
@@ -45,6 +48,7 @@ pub fn run() {
         .manage(library)
         .manage(stats)
         .manage(settings)
+        .manage(setlists)
         .invoke_handler(tauri::generate_handler![
             commands::load_track,
             commands::play,
@@ -98,6 +102,14 @@ pub fn run() {
             commands::override_param,
             commands::resume_param,
             commands::commit_param,
+            commands::list_setlists,
+            commands::create_setlist,
+            commands::delete_setlist,
+            commands::rename_setlist,
+            commands::setlist_add_entry,
+            commands::setlist_remove_entry,
+            commands::setlist_move_entry,
+            commands::setlist_set_transition,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
