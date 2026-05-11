@@ -156,6 +156,7 @@ fn build_router(state: AppState) -> Router {
         .route("/api/cues/:id", delete(delete_cue))
         .route("/api/match", post(list_match_candidates))
         .route("/api/templates/presets", get(list_template_presets))
+        .route("/api/templates/presets/:id", get(get_template_preset))
         .route("/api/templates/start", post(start_template_preset))
         .route("/api/templates/abort", post(abort_template))
         .route("/api/templates/override", post(override_param))
@@ -942,6 +943,15 @@ async fn list_template_presets() -> Json<Vec<TemplatePresetDto>> {
     Json(crate::commands::list_template_presets())
 }
 
+#[utoipa::path(get, path = "/api/templates/presets/{id}", responses((status = 200, body = Object)))]
+async fn get_template_preset(
+    Path(id): Path<String>,
+) -> ApiResult<Json<conduction_conductor::Template>> {
+    crate::commands::get_template_preset(id)
+        .map(Json)
+        .map_err(ApiError::not_found)
+}
+
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct StartTemplateRequest {
     pub preset_id: String,
@@ -1140,6 +1150,7 @@ pub struct HealthResponse {
         delete_cue,
         list_match_candidates,
         list_template_presets,
+        get_template_preset,
         start_template_preset,
         abort_template,
         override_param,

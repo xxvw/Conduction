@@ -161,6 +161,9 @@ export const ipc = {
   listTemplatePresets() {
     return call<TemplatePreset[]>("list_template_presets");
   },
+  getTemplatePreset(presetId: string) {
+    return call<TemplateFull>("get_template_preset", { presetId });
+  },
   startTemplatePreset(presetId: string, bpm: number) {
     return call<void>("start_template_preset", { presetId, bpm });
   },
@@ -271,6 +274,48 @@ export interface TemplatePreset {
   id: string;
   name: string;
   duration_beats: number;
+}
+
+export type CurveType =
+  | "linear"
+  | "ease_in"
+  | "ease_out"
+  | "ease_in_out"
+  | "step"
+  | "hold";
+
+export type TimePosition =
+  | { kind: "beats"; value: number }
+  | { kind: "seconds"; value: number }
+  | { kind: "beats_from_end"; value: number };
+
+export type BuiltInTarget =
+  | { type: "crossfader" }
+  | { type: "master_volume" }
+  | { type: "deck_volume"; deck: "A" | "B" }
+  | { type: "deck_eq_low"; deck: "A" | "B" }
+  | { type: "deck_eq_mid"; deck: "A" | "B" }
+  | { type: "deck_eq_high"; deck: "A" | "B" }
+  | { type: "deck_filter"; deck: "A" | "B" }
+  | { type: "deck_echo_wet"; deck: "A" | "B" }
+  | { type: "deck_reverb_wet"; deck: "A" | "B" };
+
+export interface Keyframe {
+  position: TimePosition;
+  value: number;
+  curve: CurveType;
+}
+
+export interface AutomationTrack {
+  target: BuiltInTarget;
+  keyframes: Keyframe[];
+}
+
+export interface TemplateFull {
+  id: string;
+  name: string;
+  duration_beats: number;
+  tracks: AutomationTrack[];
 }
 
 export interface ExportPreview {

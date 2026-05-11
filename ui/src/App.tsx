@@ -34,11 +34,12 @@ import {
 } from "@/lib/keybindings";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
+import { TemplatesScreen } from "@/screens/TemplatesScreen";
 import { YouTubeScreen } from "@/screens/YouTubeScreen";
 import type { DeckId, DeckSnapshot, MixerSnapshot } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 
-type Screen = "mix" | "library" | "youtube" | "settings";
+type Screen = "mix" | "library" | "templates" | "youtube" | "settings";
 
 const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 
@@ -415,6 +416,13 @@ export function App() {
           </button>
           <button
             className="nav-btn"
+            data-active={screen === "templates"}
+            onClick={() => setScreen("templates")}
+          >
+            Templates
+          </button>
+          <button
+            className="nav-btn"
             data-active={screen === "youtube"}
             onClick={() => setScreen("youtube")}
           >
@@ -479,6 +487,7 @@ export function App() {
             onLoadToDeck={handleLoadToDeck}
           />
         )}
+        {screen === "templates" && <TemplatesScreen />}
         {screen === "youtube" && (
           <YouTubeScreen
             onImported={() => {

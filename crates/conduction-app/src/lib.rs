@@ -92,6 +92,7 @@ pub fn run() {
             commands::list_match_candidates,
             commands::inject_demo_cues,
             commands::list_template_presets,
+            commands::get_template_preset,
             commands::start_template_preset,
             commands::abort_template,
             commands::override_param,

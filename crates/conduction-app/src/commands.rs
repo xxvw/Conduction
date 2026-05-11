@@ -571,6 +571,14 @@ pub fn list_template_presets() -> Vec<TemplatePresetDto> {
 }
 
 #[tauri::command]
+pub fn get_template_preset(preset_id: String) -> Result<Template, String> {
+    Template::all_presets()
+        .into_iter()
+        .find(|t| t.id == preset_id)
+        .ok_or_else(|| format!("unknown preset: {preset_id}"))
+}
+
+#[tauri::command]
 pub fn start_template_preset(
     audio: State<'_, AudioHandle>,
     preset_id: String,
