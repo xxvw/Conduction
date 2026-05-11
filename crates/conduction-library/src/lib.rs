@@ -11,6 +11,7 @@ pub mod library;
 pub mod mapping;
 pub mod schema;
 pub mod setlist_repo;
+pub mod user_template_repo;
 
 pub use error::{LibraryError, LibraryResult};
 pub use import::{build_track_from_file, extract_metadata, ImportedMetadata};

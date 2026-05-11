@@ -98,6 +98,8 @@ pub fn run() {
             commands::list_template_presets,
             commands::get_template_preset,
             commands::start_template_preset,
+            commands::save_user_template,
+            commands::delete_user_template,
             commands::abort_template,
             commands::override_param,
             commands::resume_param,

@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::error::{LibraryError, LibraryResult};
 
 /// 現在のスキーマバージョン。マイグレーションを追加する際にインクリメント。
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 /// スキーマメタテーブル + 全テーブルを作成する（バージョン判定 + マイグレーション）。
 pub fn initialize(conn: &Connection) -> LibraryResult<()> {
@@ -30,17 +30,25 @@ pub fn initialize(conn: &Connection) -> LibraryResult<()> {
             migrate_v1_to_v2(conn)?;
             migrate_v2_to_v3(conn)?;
             migrate_v3_to_v4(conn)?;
+            migrate_v4_to_v5(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
         Some(2) => {
             migrate_v2_to_v3(conn)?;
             migrate_v3_to_v4(conn)?;
+            migrate_v4_to_v5(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
         Some(3) => {
             migrate_v3_to_v4(conn)?;
+            migrate_v4_to_v5(conn)?;
+            set_version(conn, CURRENT_SCHEMA_VERSION)?;
+            Ok(())
+        }
+        Some(4) => {
+            migrate_v4_to_v5(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
@@ -52,6 +60,7 @@ pub fn initialize(conn: &Connection) -> LibraryResult<()> {
             migrate_v1_to_v2(conn)?;
             migrate_v2_to_v3(conn)?;
             migrate_v3_to_v4(conn)?;
+            migrate_v4_to_v5(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
@@ -156,6 +165,24 @@ fn migrate_v2_to_v3(conn: &Connection) -> LibraryResult<()> {
           PRIMARY KEY (track_id, slot)
         );
         CREATE INDEX IF NOT EXISTS idx_hot_cues_track ON hot_cues(track_id);
+        "#,
+    )?;
+    Ok(())
+}
+
+/// v5: ユーザー作成のテンプレートを保持する `user_templates` テーブルを追加 (要件 §6.7)。
+/// payload はテンプレート全体を serde で JSON 化したもの。
+fn migrate_v4_to_v5(conn: &Connection) -> LibraryResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS user_templates (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_templates_name ON user_templates(name);
         "#,
     )?;
     Ok(())
@@ -280,5 +307,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM setlist_entries", [], |r| r.get(0))
             .unwrap();
         assert_eq!(se_count, 0);
+        let ut_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM user_templates", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ut_count, 0);
     }
 }

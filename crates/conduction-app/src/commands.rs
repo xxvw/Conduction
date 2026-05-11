@@ -712,42 +712,118 @@ pub struct TemplatePresetDto {
     pub id: String,
     pub name: String,
     pub duration_beats: f64,
+    /// "builtin" または "user"。
+    pub kind: String,
 }
 
-#[tauri::command]
-pub fn list_template_presets() -> Vec<TemplatePresetDto> {
-    Template::all_presets()
+/// 内蔵プリセットおよびユーザー作成テンプレートをまとめて解決する。
+/// HTTP API からも呼ぶため、Tauri State に依存しない素の関数として公開する。
+pub fn resolve_template_impl(
+    library: &LibraryHandle,
+    preset_id: &str,
+) -> Result<Template, String> {
+    if preset_id.starts_with("preset.") {
+        Template::all_presets()
+            .into_iter()
+            .find(|t| t.id == preset_id)
+            .ok_or_else(|| format!("unknown preset: {preset_id}"))
+    } else if preset_id.starts_with("user.") {
+        let row = library
+            .with_library(|lib| lib.get_user_template(preset_id))
+            .map_err(|e| format!("library: {e}"))?
+            .ok_or_else(|| format!("unknown user template: {preset_id}"))?;
+        serde_json::from_str::<Template>(&row.payload)
+            .map_err(|e| format!("user template payload parse: {e}"))
+    } else {
+        Err(format!("unknown preset id prefix: {preset_id}"))
+    }
+}
+
+pub fn list_template_presets_impl(library: &LibraryHandle) -> Vec<TemplatePresetDto> {
+    let mut out: Vec<TemplatePresetDto> = Template::all_presets()
         .into_iter()
         .map(|t| TemplatePresetDto {
             id: t.id,
             name: t.name,
             duration_beats: t.duration_beats,
+            kind: "builtin".into(),
         })
-        .collect()
+        .collect();
+    let user_rows = library
+        .with_library(|lib| lib.list_user_templates())
+        .unwrap_or_default();
+    for row in user_rows {
+        let duration = serde_json::from_str::<Template>(&row.payload)
+            .map(|t| t.duration_beats)
+            .unwrap_or(0.0);
+        out.push(TemplatePresetDto {
+            id: row.id,
+            name: row.name,
+            duration_beats: duration,
+            kind: "user".into(),
+        });
+    }
+    out
 }
 
 #[tauri::command]
-pub fn get_template_preset(preset_id: String) -> Result<Template, String> {
-    Template::all_presets()
-        .into_iter()
-        .find(|t| t.id == preset_id)
-        .ok_or_else(|| format!("unknown preset: {preset_id}"))
+pub fn list_template_presets(library: State<'_, LibraryHandle>) -> Vec<TemplatePresetDto> {
+    list_template_presets_impl(&library)
+}
+
+#[tauri::command]
+pub fn get_template_preset(
+    library: State<'_, LibraryHandle>,
+    preset_id: String,
+) -> Result<Template, String> {
+    resolve_template_impl(&library, &preset_id)
 }
 
 #[tauri::command]
 pub fn start_template_preset(
     audio: State<'_, AudioHandle>,
+    library: State<'_, LibraryHandle>,
     preset_id: String,
     bpm: f32,
 ) -> CmdResult {
-    let preset = Template::all_presets()
-        .into_iter()
-        .find(|t| t.id == preset_id)
-        .ok_or_else(|| format!("unknown preset: {preset_id}"))?;
+    let preset = resolve_template_impl(&library, &preset_id)?;
     if !bpm.is_finite() || bpm <= 0.0 {
         return Err(format!("invalid bpm: {bpm}"));
     }
     send(&audio, AudioCommand::StartTemplate { template: preset, bpm })
+}
+
+#[tauri::command]
+pub fn save_user_template(
+    library: State<'_, LibraryHandle>,
+    template: Template,
+) -> Result<Template, String> {
+    let mut t = template;
+    if t.id.is_empty() || !t.id.starts_with("user.") {
+        t.id = format!("user.{}", Uuid::new_v4());
+    }
+    if t.name.trim().is_empty() {
+        return Err("template name required".into());
+    }
+    let payload =
+        serde_json::to_string(&t).map_err(|e| format!("serialize: {e}"))?;
+    library
+        .with_library(|lib| lib.save_user_template(&t.id, &t.name, &payload))
+        .map_err(|e| format!("library: {e}"))?;
+    Ok(t)
+}
+
+#[tauri::command]
+pub fn delete_user_template(
+    library: State<'_, LibraryHandle>,
+    preset_id: String,
+) -> CmdResult {
+    if !preset_id.starts_with("user.") {
+        return Err(format!("not a user template: {preset_id}"));
+    }
+    library
+        .with_library(|lib| lib.delete_user_template(&preset_id))
+        .map_err(|e| format!("library: {e}"))
 }
 
 #[tauri::command]

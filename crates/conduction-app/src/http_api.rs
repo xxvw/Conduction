@@ -951,15 +951,16 @@ async fn delete_cue(
 // ---- Templates ----------------------------------------------------------
 
 #[utoipa::path(get, path = "/api/templates/presets", responses((status = 200, body = Vec<TemplatePresetDto>)))]
-async fn list_template_presets() -> Json<Vec<TemplatePresetDto>> {
-    Json(crate::commands::list_template_presets())
+async fn list_template_presets(State(s): State<AppState>) -> Json<Vec<TemplatePresetDto>> {
+    Json(crate::commands::list_template_presets_impl(&s.library))
 }
 
 #[utoipa::path(get, path = "/api/templates/presets/{id}", responses((status = 200, body = Object)))]
 async fn get_template_preset(
+    State(s): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<conduction_conductor::Template>> {
-    crate::commands::get_template_preset(id)
+    crate::commands::resolve_template_impl(&s.library, &id)
         .map(Json)
         .map_err(ApiError::not_found)
 }
@@ -980,10 +981,8 @@ async fn start_template_preset(
     State(s): State<AppState>,
     Json(body): Json<StartTemplateRequest>,
 ) -> ApiResult<StatusCode> {
-    let preset = conduction_conductor::Template::all_presets()
-        .into_iter()
-        .find(|t| t.id == body.preset_id)
-        .ok_or_else(|| ApiError::bad_request(format!("unknown preset: {}", body.preset_id)))?;
+    let preset = crate::commands::resolve_template_impl(&s.library, &body.preset_id)
+        .map_err(ApiError::bad_request)?;
     if !body.bpm.is_finite() || body.bpm <= 0.0 {
         return Err(ApiError::bad_request(format!("invalid bpm: {}", body.bpm)));
     }

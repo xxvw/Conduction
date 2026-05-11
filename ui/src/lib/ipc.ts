@@ -210,6 +210,12 @@ export const ipc = {
   abortTemplate() {
     return call<void>("abort_template");
   },
+  saveUserTemplate(template: TemplateFull) {
+    return call<TemplateFull>("save_user_template", { template });
+  },
+  deleteUserTemplate(presetId: string) {
+    return call<void>("delete_user_template", { presetId });
+  },
   overrideParam(targetKey: string) {
     return call<void>("override_param", { targetKey });
   },
@@ -314,6 +320,8 @@ export interface TemplatePreset {
   id: string;
   name: string;
   duration_beats: number;
+  /** "builtin" は不可変、"user" はユーザー作成で編集可能。 */
+  kind: "builtin" | "user";
 }
 
 export type CurveType =

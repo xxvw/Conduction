@@ -1811,12 +1811,25 @@ input[type="range"] {
 .templates-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--s-3);
   background: var(--c-ink-2);
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-3);
   padding: 6px;
   overflow-y: auto;
+}
+.templates-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.templates-list-section-label {
+  padding: 0 var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--c-ink-9);
+  text-transform: uppercase;
 }
 .templates-list-item {
   display: flex;
@@ -1867,11 +1880,38 @@ input[type="range"] {
   flex-wrap: wrap;
   gap: var(--s-3);
 }
+.templates-editor-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-width: 0;
+}
 .templates-editor-head h3 {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--fs-h4);
   letter-spacing: 0.02em;
+}
+.templates-editor-name-input {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--c-ink-11);
+  font-family: var(--font-display);
+  font-size: var(--fs-h4);
+  font-weight: 600;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-2);
+  min-width: 240px;
+}
+.templates-editor-name-input:hover,
+.templates-editor-name-input:focus {
+  border-color: var(--c-ink-5);
+  background: var(--c-ink-1);
+  outline: none;
+}
+.templates-editor-actions {
+  display: flex;
+  gap: var(--s-2);
 }
 .templates-editor-meta {
   font-family: var(--font-mono);
