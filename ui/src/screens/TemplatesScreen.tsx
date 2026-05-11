@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AutomationTimeline } from "@/components/templates/AutomationTimeline";
-import { ipc, type TemplateFull, type TemplatePreset } from "@/lib/ipc";
+import {
+  ipc,
+  type AutomationTrack,
+  type TemplateFull,
+  type TemplatePreset,
+} from "@/lib/ipc";
 
 export function TemplatesScreen() {
   const [presets, setPresets] = useState<TemplatePreset[]>([]);
@@ -11,6 +16,8 @@ export function TemplatesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
+  // 編集中の tracks。null なら未編集。
+  const [draftTracks, setDraftTracks] = useState<AutomationTrack[] | null>(null);
 
   const refreshPresets = useCallback(async (keepId?: string | null) => {
     try {
@@ -48,6 +55,7 @@ export function TemplatesScreen() {
         if (cancelled) return;
         setDetail(t);
         setNameDraft(t.name);
+        setDraftTracks(null); // 別 template に切替時は draft を捨てる
       })
       .catch((e) => {
         if (!cancelled) {
@@ -114,6 +122,26 @@ export function TemplatesScreen() {
     }
   }, [detail, isUserSelected, nameDraft, refreshPresets]);
 
+  const handleSaveDraft = useCallback(async () => {
+    if (!detail || !isUserSelected || !draftTracks) return;
+    setSaving(true);
+    try {
+      const updated: TemplateFull = { ...detail, tracks: draftTracks };
+      const saved = await ipc.saveUserTemplate(updated);
+      setDetail(saved);
+      setDraftTracks(null);
+      await refreshPresets(saved.id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }, [detail, isUserSelected, draftTracks, refreshPresets]);
+
+  const handleDiscardDraft = useCallback(() => {
+    setDraftTracks(null);
+  }, []);
+
   const handleDelete = useCallback(async () => {
     if (!detail || !isUserSelected) return;
     if (!window.confirm(`Delete "${detail.name}"?`)) return;
@@ -149,7 +177,15 @@ export function TemplatesScreen() {
                 type="button"
                 className="templates-list-item"
                 data-active={p.id === selectedId}
-                onClick={() => setSelectedId(p.id)}
+                onClick={() => {
+                  if (
+                    draftTracks &&
+                    !window.confirm("Discard unsaved changes?")
+                  ) {
+                    return;
+                  }
+                  setSelectedId(p.id);
+                }}
               >
                 <span className="templates-list-name">{p.name}</span>
                 <span className="templates-list-meta">
@@ -174,7 +210,15 @@ export function TemplatesScreen() {
                 className="templates-list-item"
                 data-active={p.id === selectedId}
                 data-user
-                onClick={() => setSelectedId(p.id)}
+                onClick={() => {
+                  if (
+                    draftTracks &&
+                    !window.confirm("Discard unsaved changes?")
+                  ) {
+                    return;
+                  }
+                  setSelectedId(p.id);
+                }}
               >
                 <span className="templates-list-name">{p.name}</span>
                 <span className="templates-list-meta">
@@ -228,6 +272,32 @@ export function TemplatesScreen() {
                   Duplicate
                 </button>
               )}
+              {detail && isUserSelected && draftTracks && (
+                <>
+                  <span
+                    className="hint"
+                    style={{ color: "var(--c-accent)", fontSize: "var(--fs-micro)" }}
+                  >
+                    unsaved
+                  </span>
+                  <button
+                    className="btn"
+                    onClick={handleDiscardDraft}
+                    disabled={saving}
+                    title="Revert to last saved state"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    className="btn"
+                    data-variant="primary"
+                    onClick={() => void handleSaveDraft()}
+                    disabled={saving}
+                  >
+                    Save
+                  </button>
+                </>
+              )}
               {detail && isUserSelected && (
                 <button
                   className="btn"
@@ -268,7 +338,24 @@ export function TemplatesScreen() {
           {loading && <p className="hint">Loading…</p>}
           {detail && !loading && (
             <div className="templates-editor-body">
-              <AutomationTimeline template={detail} />
+              <AutomationTimeline
+                template={
+                  draftTracks
+                    ? { ...detail, tracks: draftTracks }
+                    : detail
+                }
+                editable={isUserSelected}
+                onTracksChange={(next) => setDraftTracks(next)}
+              />
+              {isUserSelected && (
+                <p
+                  className="hint"
+                  style={{ fontSize: "var(--fs-micro)", marginTop: "var(--s-2)" }}
+                >
+                  Drag a keyframe to move (snaps to 1/4 beat). Double-click empty area
+                  to add. Right-click to delete (each row keeps at least 1).
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   AutomationTrack,
   BuiltInTarget,
   CurveType,
+  Keyframe,
   TemplateFull,
   TimePosition,
 } from "@/lib/ipc";
@@ -11,17 +12,47 @@ import type {
 interface AutomationTimelineProps {
   template: TemplateFull;
   height?: number;
+  editable?: boolean;
+  onTracksChange?: (tracks: AutomationTrack[]) => void;
 }
 
 const TRACK_ROW_HEIGHT = 72;
 const TRACK_LABEL_WIDTH = 160;
 const X_AXIS_HEIGHT = 22;
+const PAD_Y = 8;
+const HIT_RADIUS = 7;
 
-export function AutomationTimeline({ template, height }: AutomationTimelineProps) {
+interface DragState {
+  trackIdx: number;
+  kfIdx: number;
+  beat: number;
+  value: number;
+}
+
+export function AutomationTimeline({
+  template,
+  height,
+  editable = false,
+  onTracksChange,
+}: AutomationTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
 
   const computedHeight =
     height ?? X_AXIS_HEIGHT + Math.max(1, template.tracks.length) * TRACK_ROW_HEIGHT + 8;
+
+  // 描画用の effective tracks: drag 中はその keyframe を一時的に置き換え。
+  const effectiveTracks: AutomationTrack[] = drag
+    ? template.tracks.map((tr, ti) => {
+        if (ti !== drag.trackIdx) return tr;
+        const kfs = tr.keyframes.map((k, ki) =>
+          ki === drag.kfIdx
+            ? ({ ...k, position: { kind: "beats", value: drag.beat }, value: drag.value } as Keyframe)
+            : k,
+        );
+        return { ...tr, keyframes: kfs };
+      })
+    : template.tracks;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -37,14 +68,216 @@ export function AutomationTimeline({ template, height }: AutomationTimelineProps
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, computedHeight);
 
-    drawTimeline(ctx, cssW, computedHeight, template);
-  }, [template, computedHeight]);
+    drawTimeline(ctx, cssW, computedHeight, {
+      ...template,
+      tracks: effectiveTracks,
+    });
+  }, [template, computedHeight, effectiveTracks]);
+
+  // ----- pointer events (editable のみ) -----
+
+  const getTrackArea = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    return {
+      x: TRACK_LABEL_WIDTH,
+      y: X_AXIS_HEIGHT,
+      w: canvas.clientWidth - TRACK_LABEL_WIDTH - 4,
+      h: computedHeight - X_AXIS_HEIGHT - 8,
+    };
+  }, [computedHeight]);
+
+  const hitTest = useCallback(
+    (mx: number, my: number): { trackIdx: number; kfIdx: number } | null => {
+      const area = getTrackArea();
+      if (!area) return null;
+      for (let ti = 0; ti < template.tracks.length; ti++) {
+        const track = template.tracks[ti]!;
+        const rowTop = area.y + ti * TRACK_ROW_HEIGHT;
+        const range = valueRange(track.target);
+        for (let ki = 0; ki < track.keyframes.length; ki++) {
+          const kf = track.keyframes[ki]!;
+          const beat = positionToBeats(kf.position, template.duration_beats);
+          const x = area.x + (beat / template.duration_beats) * area.w;
+          const tNorm = (kf.value - range.min) / (range.max - range.min);
+          const y = rowTop + PAD_Y + (1 - tNorm) * (TRACK_ROW_HEIGHT - PAD_Y * 2);
+          const dx = mx - x;
+          const dy = my - y;
+          if (dx * dx + dy * dy <= HIT_RADIUS * HIT_RADIUS) {
+            return { trackIdx: ti, kfIdx: ki };
+          }
+        }
+      }
+      return null;
+    },
+    [template, getTrackArea],
+  );
+
+  const xyToBeatValue = useCallback(
+    (
+      mx: number,
+      my: number,
+      trackIdx: number,
+    ): { beat: number; value: number } | null => {
+      const area = getTrackArea();
+      if (!area) return null;
+      const track = template.tracks[trackIdx];
+      if (!track) return null;
+      const beatRaw =
+        ((mx - area.x) / area.w) * template.duration_beats;
+      // 1/4 拍にスナップ
+      const beat = Math.max(
+        0,
+        Math.min(template.duration_beats, Math.round(beatRaw * 4) / 4),
+      );
+      const rowTop = area.y + trackIdx * TRACK_ROW_HEIGHT;
+      const yLocal = my - rowTop - PAD_Y;
+      const h = TRACK_ROW_HEIGHT - PAD_Y * 2;
+      const tNorm = 1 - Math.max(0, Math.min(1, yLocal / h));
+      const range = valueRange(track.target);
+      const value = range.min + tNorm * (range.max - range.min);
+      return { beat, value };
+    },
+    [template, getTrackArea],
+  );
+
+  const trackIdxFromY = useCallback(
+    (my: number): number | null => {
+      const area = getTrackArea();
+      if (!area) return null;
+      const idx = Math.floor((my - area.y) / TRACK_ROW_HEIGHT);
+      if (idx < 0 || idx >= template.tracks.length) return null;
+      return idx;
+    },
+    [template.tracks.length, getTrackArea],
+  );
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!editable || !onTracksChange) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const hit = hitTest(mx, my);
+      if (!hit) return;
+      const kf = template.tracks[hit.trackIdx]!.keyframes[hit.kfIdx]!;
+      setDrag({
+        trackIdx: hit.trackIdx,
+        kfIdx: hit.kfIdx,
+        beat: positionToBeats(kf.position, template.duration_beats),
+        value: kf.value,
+      });
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [editable, hitTest, onTracksChange, template],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!drag) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const next = xyToBeatValue(mx, my, drag.trackIdx);
+      if (next) setDrag({ ...drag, ...next });
+    },
+    [drag, xyToBeatValue],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!drag || !onTracksChange) {
+        setDrag(null);
+        return;
+      }
+      // commit
+      const nextTracks = template.tracks.map((tr, ti) => {
+        if (ti !== drag.trackIdx) return tr;
+        const kfs = tr.keyframes.map((k, ki) =>
+          ki === drag.kfIdx
+            ? ({
+                ...k,
+                position: { kind: "beats", value: drag.beat } as TimePosition,
+                value: drag.value,
+              })
+            : k,
+        );
+        return { ...tr, keyframes: kfs };
+      });
+      onTracksChange(nextTracks);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* noop */
+      }
+      setDrag(null);
+    },
+    [drag, onTracksChange, template.tracks],
+  );
+
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!editable || !onTracksChange) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const hit = hitTest(mx, my);
+      if (hit) return; // 既存 keyframe には何もしない (削除は contextmenu)
+      const ti = trackIdxFromY(my);
+      if (ti == null) return;
+      const bv = xyToBeatValue(mx, my, ti);
+      if (!bv) return;
+      const newKf: Keyframe = {
+        position: { kind: "beats", value: bv.beat },
+        value: bv.value,
+        curve: "linear",
+      };
+      const nextTracks = template.tracks.map((tr, idx) => {
+        if (idx !== ti) return tr;
+        return { ...tr, keyframes: [...tr.keyframes, newKf] };
+      });
+      onTracksChange(nextTracks);
+    },
+    [editable, hitTest, onTracksChange, template.tracks, trackIdxFromY, xyToBeatValue],
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!editable || !onTracksChange) return;
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const hit = hitTest(mx, my);
+      if (!hit) return;
+      // 同 track 内最後の 1 個は残す (空 track は許容するが、複数→1個の境界で
+      // 「うっかり全消し」してしまうのを防ぐ意味で 1 個下限にする)
+      const track = template.tracks[hit.trackIdx]!;
+      if (track.keyframes.length <= 1) return;
+      const nextTracks = template.tracks.map((tr, ti) => {
+        if (ti !== hit.trackIdx) return tr;
+        return {
+          ...tr,
+          keyframes: tr.keyframes.filter((_, ki) => ki !== hit.kfIdx),
+        };
+      });
+      onTracksChange(nextTracks);
+    },
+    [editable, hitTest, onTracksChange, template.tracks],
+  );
 
   return (
     <canvas
       ref={canvasRef}
       className="automation-timeline"
+      data-editable={editable || undefined}
       aria-label={`Automation tracks for ${template.name}`}
+      onPointerDown={editable ? handlePointerDown : undefined}
+      onPointerMove={editable ? handlePointerMove : undefined}
+      onPointerUp={editable ? handlePointerUp : undefined}
+      onPointerCancel={editable ? handlePointerUp : undefined}
+      onDoubleClick={editable ? handleDoubleClick : undefined}
+      onContextMenu={editable ? handleContextMenu : undefined}
     />
   );
 }

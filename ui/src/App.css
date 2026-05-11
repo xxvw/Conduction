@@ -1960,6 +1960,10 @@ input[type="range"] {
   display: block;
   width: 100%;
 }
+.automation-timeline[data-editable] {
+  cursor: crosshair;
+  touch-action: none;
+}
 
 /* --- YouTube screen --- */
 .youtube-screen {
