@@ -26,7 +26,7 @@ pub fn run() {
     let audio = audio_engine::spawn(main_device_name, cue_device_name)
         .expect("audio engine must start");
     let library = library_state::LibraryHandle::open_default().expect("library must open");
-    let setlists = setlist_state::SetlistHandle::new();
+    let setlists = setlist_state::SetlistHandle::new(library.shared());
     let stats = system_stats::SystemStatsHandle::new();
     info!("conduction-app booting");
 

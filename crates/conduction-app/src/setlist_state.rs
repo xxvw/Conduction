@@ -1,8 +1,11 @@
-//! Setlist の in-memory state (Phase A1)。永続化は後段で SQLite / .cset に切り替える。
+//! Setlist の永続化バックエンド (Phase C1)。
+//!
+//! `library.db` (SQLite) に保存。CRUD は conduction-library の Setlist 系メソッドへ委譲。
 
 use std::sync::Arc;
 
 use conduction_core::{Setlist, SetlistEntry, SetlistEntryId, SetlistId, TrackId, TransitionSpec};
+use conduction_library::Library;
 use parking_lot::Mutex;
 use thiserror::Error;
 
@@ -14,60 +17,55 @@ pub enum SetlistError {
     EntryNotFound(SetlistEntryId),
     #[error("invalid index: {0}")]
     BadIndex(i64),
+    #[error("library error: {0}")]
+    Library(#[from] conduction_library::LibraryError),
 }
 
 pub type SetlistResult<T> = Result<T, SetlistError>;
 
 #[derive(Clone)]
 pub struct SetlistHandle {
-    inner: Arc<Mutex<Vec<Setlist>>>,
+    library: Arc<Mutex<Library>>,
 }
 
 impl SetlistHandle {
-    pub fn new() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Vec::new())),
-        }
+    pub fn new(library: Arc<Mutex<Library>>) -> Self {
+        Self { library }
     }
 
     pub fn list(&self) -> Vec<Setlist> {
-        self.inner.lock().clone()
+        // 失敗時は空リスト (UI 側は別 commands で原因を見られる)。
+        self.library.lock().list_setlists().unwrap_or_default()
     }
 
     pub fn get(&self, id: SetlistId) -> SetlistResult<Setlist> {
-        self.inner
+        self.library
             .lock()
-            .iter()
-            .find(|s| s.id == id)
-            .cloned()
+            .get_setlist(id)?
             .ok_or(SetlistError::NotFound(id))
     }
 
     pub fn create(&self, name: String) -> Setlist {
-        let setlist = Setlist::new(name);
-        let mut guard = self.inner.lock();
-        guard.push(setlist.clone());
-        setlist
+        // create は基本失敗しないが、SQLite I/O エラー時にプレースホルダを返す
+        // (UI は次回の list でズレに気付く)。
+        match self.library.lock().create_setlist(name.clone()) {
+            Ok(s) => s,
+            Err(_) => Setlist::new(name),
+        }
     }
 
     pub fn delete(&self, id: SetlistId) -> SetlistResult<()> {
-        let mut guard = self.inner.lock();
-        let before = guard.len();
-        guard.retain(|s| s.id != id);
-        if guard.len() == before {
-            return Err(SetlistError::NotFound(id));
-        }
-        Ok(())
+        self.library
+            .lock()
+            .delete_setlist(id)
+            .map_err(SetlistError::Library)
     }
 
     pub fn rename(&self, id: SetlistId, name: String) -> SetlistResult<Setlist> {
-        let mut guard = self.inner.lock();
-        let s = guard
-            .iter_mut()
-            .find(|s| s.id == id)
-            .ok_or(SetlistError::NotFound(id))?;
-        s.name = name;
-        Ok(s.clone())
+        self.library
+            .lock()
+            .rename_setlist(id, name)
+            .map_err(SetlistError::Library)
     }
 
     pub fn add_entry(
@@ -75,14 +73,10 @@ impl SetlistHandle {
         id: SetlistId,
         track_id: TrackId,
     ) -> SetlistResult<SetlistEntry> {
-        let mut guard = self.inner.lock();
-        let s = guard
-            .iter_mut()
-            .find(|s| s.id == id)
-            .ok_or(SetlistError::NotFound(id))?;
-        let entry = SetlistEntry::new(track_id);
-        s.entries.push(entry.clone());
-        Ok(entry)
+        self.library
+            .lock()
+            .add_setlist_entry(id, track_id)
+            .map_err(SetlistError::Library)
     }
 
     pub fn remove_entry(
@@ -90,40 +84,22 @@ impl SetlistHandle {
         id: SetlistId,
         entry_id: SetlistEntryId,
     ) -> SetlistResult<()> {
-        let mut guard = self.inner.lock();
-        let s = guard
-            .iter_mut()
-            .find(|s| s.id == id)
-            .ok_or(SetlistError::NotFound(id))?;
-        let before = s.entries.len();
-        s.entries.retain(|e| e.id != entry_id);
-        if s.entries.len() == before {
-            return Err(SetlistError::EntryNotFound(entry_id));
-        }
-        Ok(())
+        self.library
+            .lock()
+            .remove_setlist_entry(id, entry_id)
+            .map_err(SetlistError::Library)
     }
 
-    /// `entry_id` を `new_index` の位置に移動する。`new_index` が範囲外なら端にクランプ。
     pub fn move_entry(
         &self,
         id: SetlistId,
         entry_id: SetlistEntryId,
         new_index: i64,
     ) -> SetlistResult<Setlist> {
-        let mut guard = self.inner.lock();
-        let s = guard
-            .iter_mut()
-            .find(|s| s.id == id)
-            .ok_or(SetlistError::NotFound(id))?;
-        let from = s
-            .entries
-            .iter()
-            .position(|e| e.id == entry_id)
-            .ok_or(SetlistError::EntryNotFound(entry_id))?;
-        let to = new_index.clamp(0, (s.entries.len() as i64).saturating_sub(1)) as usize;
-        let item = s.entries.remove(from);
-        s.entries.insert(to, item);
-        Ok(s.clone())
+        self.library
+            .lock()
+            .move_setlist_entry(id, entry_id, new_index)
+            .map_err(SetlistError::Library)
     }
 
     pub fn set_transition(
@@ -132,23 +108,9 @@ impl SetlistHandle {
         entry_id: SetlistEntryId,
         spec: Option<TransitionSpec>,
     ) -> SetlistResult<SetlistEntry> {
-        let mut guard = self.inner.lock();
-        let s = guard
-            .iter_mut()
-            .find(|s| s.id == id)
-            .ok_or(SetlistError::NotFound(id))?;
-        let e = s
-            .entries
-            .iter_mut()
-            .find(|e| e.id == entry_id)
-            .ok_or(SetlistError::EntryNotFound(entry_id))?;
-        e.transition_to_next = spec;
-        Ok(e.clone())
-    }
-}
-
-impl Default for SetlistHandle {
-    fn default() -> Self {
-        Self::new()
+        self.library
+            .lock()
+            .set_setlist_transition(id, entry_id, spec)
+            .map_err(SetlistError::Library)
     }
 }

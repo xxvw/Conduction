@@ -54,6 +54,14 @@ impl Library {
         Ok(Self { conn })
     }
 
+    /// 同 crate 内のモジュール (setlist_repo 等) が直接 SQL を叩くための accessor。
+    pub(crate) fn raw_conn(&self) -> &Connection {
+        &self.conn
+    }
+    pub(crate) fn raw_conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+
     // -------- Track --------
 
     /// Track を新規挿入する。既に同一 path が存在する場合はエラー。

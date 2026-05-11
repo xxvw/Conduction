@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::error::{LibraryError, LibraryResult};
 
 /// 現在のスキーマバージョン。マイグレーションを追加する際にインクリメント。
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 /// スキーマメタテーブル + 全テーブルを作成する（バージョン判定 + マイグレーション）。
 pub fn initialize(conn: &Connection) -> LibraryResult<()> {
@@ -29,11 +29,18 @@ pub fn initialize(conn: &Connection) -> LibraryResult<()> {
         Some(1) => {
             migrate_v1_to_v2(conn)?;
             migrate_v2_to_v3(conn)?;
+            migrate_v3_to_v4(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
         Some(2) => {
             migrate_v2_to_v3(conn)?;
+            migrate_v3_to_v4(conn)?;
+            set_version(conn, CURRENT_SCHEMA_VERSION)?;
+            Ok(())
+        }
+        Some(3) => {
+            migrate_v3_to_v4(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
@@ -44,6 +51,7 @@ pub fn initialize(conn: &Connection) -> LibraryResult<()> {
             create_v1_tables(conn)?;
             migrate_v1_to_v2(conn)?;
             migrate_v2_to_v3(conn)?;
+            migrate_v3_to_v4(conn)?;
             set_version(conn, CURRENT_SCHEMA_VERSION)?;
             Ok(())
         }
@@ -153,6 +161,40 @@ fn migrate_v2_to_v3(conn: &Connection) -> LibraryResult<()> {
     Ok(())
 }
 
+/// v4: Setlist と Setlist エントリを保持するテーブルを追加 (要件 §6.11)。
+/// 遷移仕様は entry に inline (NULL カラム = no transition)。
+fn migrate_v3_to_v4(conn: &Connection) -> LibraryResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS setlists (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS setlist_entries (
+          id TEXT PRIMARY KEY,
+          setlist_id TEXT NOT NULL REFERENCES setlists(id) ON DELETE CASCADE,
+          position INTEGER NOT NULL,
+          track_id TEXT NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+          play_from_cue TEXT,
+          play_until_cue TEXT,
+          transition_template_id TEXT,
+          transition_tempo_mode TEXT,
+          transition_entry_cue TEXT,
+          transition_exit_cue TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_setlist_entries_setlist
+          ON setlist_entries(setlist_id, position);
+        "#,
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,5 +272,13 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM hot_cues", [], |r| r.get(0))
             .unwrap();
         assert_eq!(hc_count, 0);
+        let sl_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM setlists", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sl_count, 0);
+        let se_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM setlist_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(se_count, 0);
     }
 }
