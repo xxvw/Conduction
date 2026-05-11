@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AutomationTimeline } from "@/components/templates/AutomationTimeline";
 import { NodeGraphEditor } from "@/components/templates/NodeGraphEditor";
+import { ScriptEditor } from "@/components/templates/ScriptEditor";
 import {
   ipc,
   type AutomationTrack,
@@ -9,7 +10,7 @@ import {
   type TemplatePreset,
 } from "@/lib/ipc";
 
-type EditorMode = "visual" | "node";
+type EditorMode = "visual" | "node" | "script";
 
 export function TemplatesScreen() {
   const [presets, setPresets] = useState<TemplatePreset[]>([]);
@@ -21,9 +22,16 @@ export function TemplatesScreen() {
   const [saving, setSaving] = useState<boolean>(false);
   // 編集中の tracks。null なら未編集。
   const [draftTracks, setDraftTracks] = useState<AutomationTrack[] | null>(null);
+  // Lua source の draft (Script タブで Compile が走った時に詰める)。
+  const [draftSource, setDraftSource] = useState<string | null>(null);
+  // Compile で duration_beats が変わった時にここに溜まる。
+  const [draftDuration, setDraftDuration] = useState<number | null>(null);
   const [editorMode, setEditorMode] = useState<EditorMode>("visual");
   // Node エディタで選択中の track index (Visual に keyframes を表示する時に使う)。
   const [selectedTrackIdx, setSelectedTrackIdx] = useState<number | null>(null);
+
+  const hasDraft =
+    draftTracks !== null || draftSource !== null || draftDuration !== null;
 
   // async ハンドラから「現在の選択 ID」を読むための ref。
   // closure に閉じ込めた selectedId は古くなるので、await 後の判定には ref を使う。
@@ -68,7 +76,10 @@ export function TemplatesScreen() {
         if (cancelled) return;
         setDetail(t);
         setNameDraft(t.name);
-        setDraftTracks(null); // 別 template に切替時は draft を捨てる
+        // 別 template に切替時は draft を捨てる
+        setDraftTracks(null);
+        setDraftSource(null);
+        setDraftDuration(null);
       })
       .catch((e) => {
         if (!cancelled) {
@@ -145,17 +156,29 @@ export function TemplatesScreen() {
     }
   }, [detail, isUserSelected, nameDraft, refreshPresets]);
 
+  const clearAllDrafts = useCallback(() => {
+    setDraftTracks(null);
+    setDraftSource(null);
+    setDraftDuration(null);
+  }, []);
+
   const handleSaveDraft = useCallback(async () => {
-    if (!detail || !isUserSelected || !draftTracks) return;
+    if (!detail || !isUserSelected || !hasDraft) return;
     const targetId = detail.id;
     setSaving(true);
     try {
-      const updated: TemplateFull = { ...detail, tracks: draftTracks };
+      const updated: TemplateFull = {
+        ...detail,
+        tracks: draftTracks ?? detail.tracks,
+        duration_beats: draftDuration ?? detail.duration_beats,
+        // draftSource が null = Script タブで触ってない → 既存 source を保持
+        source: draftSource !== null ? draftSource : detail.source ?? null,
+      };
       const saved = await ipc.saveUserTemplate(updated);
       const stillSelected = selectedIdRef.current === targetId;
       if (stillSelected) {
         setDetail(saved);
-        setDraftTracks(null);
+        clearAllDrafts();
       }
       await refreshPresets(stillSelected ? saved.id : undefined);
     } catch (e) {
@@ -163,10 +186,26 @@ export function TemplatesScreen() {
     } finally {
       setSaving(false);
     }
-  }, [detail, isUserSelected, draftTracks, refreshPresets]);
+  }, [
+    detail,
+    isUserSelected,
+    hasDraft,
+    draftTracks,
+    draftSource,
+    draftDuration,
+    refreshPresets,
+    clearAllDrafts,
+  ]);
 
   const handleDiscardDraft = useCallback(() => {
-    setDraftTracks(null);
+    clearAllDrafts();
+  }, [clearAllDrafts]);
+
+  const handleCompiledFromScript = useCallback((compiled: TemplateFull) => {
+    // Compile 成功時: tracks / duration / source を draft に積む。
+    setDraftTracks(compiled.tracks);
+    setDraftDuration(compiled.duration_beats);
+    setDraftSource(compiled.source ?? "");
   }, []);
 
   const handleDelete = useCallback(async () => {
@@ -209,10 +248,7 @@ export function TemplatesScreen() {
                 className="templates-list-item"
                 data-active={p.id === selectedId}
                 onClick={() => {
-                  if (
-                    draftTracks &&
-                    !window.confirm("Discard unsaved changes?")
-                  ) {
+                  if (hasDraft && !window.confirm("Discard unsaved changes?")) {
                     return;
                   }
                   setSelectedId(p.id);
@@ -242,10 +278,7 @@ export function TemplatesScreen() {
                 data-active={p.id === selectedId}
                 data-user
                 onClick={() => {
-                  if (
-                    draftTracks &&
-                    !window.confirm("Discard unsaved changes?")
-                  ) {
+                  if (hasDraft && !window.confirm("Discard unsaved changes?")) {
                     return;
                   }
                   setSelectedId(p.id);
@@ -303,7 +336,7 @@ export function TemplatesScreen() {
                   Duplicate
                 </button>
               )}
-              {detail && isUserSelected && draftTracks && (
+              {detail && isUserSelected && hasDraft && (
                 <>
                   <span
                     className="hint"
@@ -357,8 +390,8 @@ export function TemplatesScreen() {
               </button>
               <button
                 className="templates-editor-mode"
-                disabled
-                title="Phase D4 (next)"
+                data-active={editorMode === "script" || undefined}
+                onClick={() => setEditorMode("script")}
               >
                 Script
               </button>
@@ -373,7 +406,7 @@ export function TemplatesScreen() {
           {loading && <p className="hint">Loading…</p>}
           {detail && !loading && (
             <div className="templates-editor-body">
-              {editorMode === "visual" ? (
+              {editorMode === "visual" && (
                 <>
                   <AutomationTimeline
                     template={
@@ -398,7 +431,8 @@ export function TemplatesScreen() {
                     </p>
                   )}
                 </>
-              ) : (
+              )}
+              {editorMode === "node" && (
                 <NodeGraphEditorPanel
                   detail={detail}
                   draftTracks={draftTracks}
@@ -406,6 +440,22 @@ export function TemplatesScreen() {
                   selectedTrackIdx={selectedTrackIdx}
                   onSelectTrack={setSelectedTrackIdx}
                   onTracksChange={(next) => setDraftTracks(next)}
+                />
+              )}
+              {editorMode === "script" && (
+                <ScriptEditor
+                  template={
+                    draftTracks
+                      ? {
+                          ...detail,
+                          tracks: draftTracks,
+                          duration_beats: draftDuration ?? detail.duration_beats,
+                          source: draftSource ?? detail.source ?? null,
+                        }
+                      : detail
+                  }
+                  editable={isUserSelected}
+                  onCompileSuccess={handleCompiledFromScript}
                 />
               )}
             </div>

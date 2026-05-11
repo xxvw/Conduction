@@ -37,7 +37,9 @@
   flex: 1;
 }
 
-.main {
+/* app-main: グローバルすぎる `.main` だと Monaco の内部 (.suggest-widget の中の
+   .contents > .main 等) と衝突して候補ラベルが grid 化されて invisible になる。 */
+.app-main {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2067,6 +2069,50 @@ input[type="range"] {
   color: var(--c-ink-9);
   text-transform: uppercase;
   margin-bottom: var(--s-2);
+}
+
+/* --- Script editor (Templates / Script tab) --- */
+.script-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  flex: 1;
+  min-height: 0;
+}
+.script-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+/* Monaco エディタの container。height は明示しないと内部の "height: 100%" が
+   0 に解決されて editor が極端に小さくなる (flex chain で実 px が降ってこない
+   ケースがあるため)。Node tab と同じ 480px 固定にしておく。 */
+.script-editor-monaco {
+  width: 100%;
+  height: 480px;
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  overflow: hidden;
+}
+/* Monaco の内部 widget (suggest popup 等) は theme=vs-dark に任せる。
+   カスタム CSS を被せると suggest 候補のテキストが消える場合があった。 */
+.script-editor-error {
+  background: rgba(255, 88, 88, 0.1);
+  border: 1px solid var(--c-danger);
+  color: var(--c-danger);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  white-space: pre-wrap;
+  margin: 0;
+}
+.script-editor-toolbar code {
+  background: var(--c-ink-3);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
 }
 .automation-menu {
   position: fixed;

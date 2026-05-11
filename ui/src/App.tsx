@@ -464,7 +464,7 @@ export function App() {
         <MasterSlim volume={status?.master_volume ?? 1.0} />
       </header>
 
-      <main className={`main main-${screen}`}>
+      <main className={`app-main main-${screen}`}>
         {screen === "mix" && (
           <MixScreen
             status={status}

@@ -87,6 +87,10 @@ pub struct Template {
     /// テンプレート全長 (拍数)。
     pub duration_beats: f64,
     pub tracks: Vec<AutomationTrack>,
+    /// Lua source (D4 Script)。null = Visual/Node で組まれた既存 template。
+    /// あるなら user template の再 compile に使える。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 impl Template {
@@ -94,6 +98,7 @@ impl Template {
     /// クロスフェーダーで全体を A → B、Deck A の low EQ を後半でカット。
     pub fn long_eq_mix() -> Self {
         Self {
+            source: None,
             id: "preset.long_eq_mix".into(),
             name: "Long EQ Mix".into(),
             duration_beats: 128.0,
@@ -161,6 +166,7 @@ impl Template {
     /// クロスフェーダーを EaseIn で 16 拍かけて A → B、低音は触らない。
     pub fn quick_cut() -> Self {
         Self {
+            source: None,
             id: "preset.quick_cut".into(),
             name: "Quick Cut".into(),
             duration_beats: 16.0,
@@ -186,6 +192,7 @@ impl Template {
     /// 前半 16 拍は A 主体、中間 32 拍で「low EQ swap」、後半 16 拍は B 主体。
     pub fn breakdown_swap() -> Self {
         Self {
+            source: None,
             id: "preset.breakdown_swap".into(),
             name: "Breakdown Swap".into(),
             duration_beats: 64.0,
@@ -263,6 +270,7 @@ impl Template {
     /// Deck A に echo を立ち上げつつ、後半でチャンネルボリュームを 0 まで落とす。
     pub fn echo_out() -> Self {
         Self {
+            source: None,
             id: "preset.echo_out".into(),
             name: "Echo Out".into(),
             duration_beats: 32.0,
@@ -315,6 +323,7 @@ impl Template {
     /// 3 拍目までは A を保持、最後の 1 拍で一気に B にスナップ。
     pub fn instant_swap() -> Self {
         Self {
+            source: None,
             id: "preset.instant_swap".into(),
             name: "Instant Swap".into(),
             duration_beats: 4.0,

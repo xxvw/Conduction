@@ -10,7 +10,8 @@ description = "Script API (WebSocket / OSC + Lua) for Conduction."
 
 [dependencies]
 conduction-core.workspace = true
-# mlua.workspace = true  # 有効化はフェーズ5で
+conduction-conductor.workspace = true
+mlua.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

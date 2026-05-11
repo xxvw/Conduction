@@ -100,6 +100,7 @@ pub fn run() {
             commands::start_template_preset,
             commands::save_user_template,
             commands::delete_user_template,
+            commands::compile_lua_template,
             commands::abort_template,
             commands::override_param,
             commands::resume_param,

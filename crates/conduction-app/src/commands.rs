@@ -826,6 +826,31 @@ pub fn delete_user_template(
         .map_err(|e| format!("library: {e}"))
 }
 
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CompileLuaRequest {
+    pub source: String,
+    /// 既存 template から再 compile する時にデフォルト長として渡す。
+    pub default_duration_beats: f64,
+    #[serde(default)]
+    pub template_id: Option<String>,
+    #[serde(default)]
+    pub template_name: Option<String>,
+}
+
+/// Lua スクリプトを Template に compile する。保存はしない (UI 側で saveUserTemplate を呼ぶ)。
+#[tauri::command]
+pub fn compile_lua_template(req: CompileLuaRequest) -> Result<Template, String> {
+    conduction_script::compile_lua_to_template(
+        &req.source,
+        conduction_script::CompileOptions {
+            default_duration_beats: req.default_duration_beats,
+            template_id: req.template_id,
+            template_name: req.template_name,
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn abort_template(audio: State<'_, AudioHandle>) -> CmdResult {
     send(&audio, AudioCommand::AbortTemplate)

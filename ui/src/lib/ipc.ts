@@ -216,6 +216,14 @@ export const ipc = {
   deleteUserTemplate(presetId: string) {
     return call<void>("delete_user_template", { presetId });
   },
+  compileLuaTemplate(req: {
+    source: string;
+    default_duration_beats: number;
+    template_id?: string | null;
+    template_name?: string | null;
+  }) {
+    return call<TemplateFull>("compile_lua_template", { req });
+  },
   overrideParam(targetKey: string) {
     return call<void>("override_param", { targetKey });
   },
@@ -364,6 +372,8 @@ export interface TemplateFull {
   name: string;
   duration_beats: number;
   tracks: AutomationTrack[];
+  /** Lua source。null/undefined なら Visual/Node で組まれた template。 */
+  source?: string | null;
 }
 
 export interface ExportPreview {
