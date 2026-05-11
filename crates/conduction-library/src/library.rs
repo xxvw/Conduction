@@ -220,9 +220,40 @@ impl Library {
         Ok(())
     }
 
-    pub fn delete_cue(&self, id: CueId) -> LibraryResult<()> {
-        self.conn
-            .execute("DELETE FROM cues WHERE id = ?1", params![id.as_uuid().to_string()])?;
+    /// Cue を削除し、これを参照していた setlist_entries の cue 列を NULL に戻す。
+    /// `cues(id)` への FK は張れない (cue が無くなった setlist は残したいので
+    /// CASCADE では消し過ぎ、参照側に SET NULL を持つ FK は SQLite で扱いが
+    /// 煩雑) ため、アプリ層で明示的にクリーンアップする。
+    pub fn delete_cue(&mut self, id: CueId) -> LibraryResult<()> {
+        let id_str = id.as_uuid().to_string();
+        let tx = self.conn.transaction()?;
+        // setlist_entries 側の 4 つの cue 参照を NULL に戻す
+        tx.execute(
+            "UPDATE setlist_entries SET
+               play_from_cue = NULL
+             WHERE play_from_cue = ?1",
+            params![id_str],
+        )?;
+        tx.execute(
+            "UPDATE setlist_entries SET
+               play_until_cue = NULL
+             WHERE play_until_cue = ?1",
+            params![id_str],
+        )?;
+        tx.execute(
+            "UPDATE setlist_entries SET
+               transition_entry_cue = NULL
+             WHERE transition_entry_cue = ?1",
+            params![id_str],
+        )?;
+        tx.execute(
+            "UPDATE setlist_entries SET
+               transition_exit_cue = NULL
+             WHERE transition_exit_cue = ?1",
+            params![id_str],
+        )?;
+        tx.execute("DELETE FROM cues WHERE id = ?1", params![id_str])?;
+        tx.commit()?;
         Ok(())
     }
 
