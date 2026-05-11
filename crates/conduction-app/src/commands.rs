@@ -564,16 +564,16 @@ fn parse_setlist_entry_id(s: &str) -> CmdResult<SetlistEntryId> {
 }
 
 #[tauri::command]
-pub fn list_setlists(setlists: State<'_, SetlistHandle>) -> Vec<Setlist> {
-    setlists.list()
+pub fn list_setlists(setlists: State<'_, SetlistHandle>) -> CmdResult<Vec<Setlist>> {
+    setlists.list().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn create_setlist(
     setlists: State<'_, SetlistHandle>,
     name: String,
-) -> Setlist {
-    setlists.create(name)
+) -> CmdResult<Setlist> {
+    setlists.create(name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

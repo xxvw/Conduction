@@ -1056,8 +1056,13 @@ async fn commit_param(
 // ---- Setlists -----------------------------------------------------------
 
 #[utoipa::path(get, path = "/api/setlists", responses((status = 200, body = Object)))]
-async fn list_setlists(State(s): State<AppState>) -> Json<Vec<conduction_core::Setlist>> {
-    Json(s.setlists.list())
+async fn list_setlists(
+    State(s): State<AppState>,
+) -> ApiResult<Json<Vec<conduction_core::Setlist>>> {
+    s.setlists
+        .list()
+        .map(Json)
+        .map_err(|e| ApiError::internal(e.to_string()))
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -1074,8 +1079,11 @@ pub struct CreateSetlistRequest {
 async fn create_setlist(
     State(s): State<AppState>,
     Json(body): Json<CreateSetlistRequest>,
-) -> Json<conduction_core::Setlist> {
-    Json(s.setlists.create(body.name))
+) -> ApiResult<Json<conduction_core::Setlist>> {
+    s.setlists
+        .create(body.name)
+        .map(Json)
+        .map_err(|e| ApiError::internal(e.to_string()))
 }
 
 #[utoipa::path(delete, path = "/api/setlists/{id}", responses((status = 200)))]
