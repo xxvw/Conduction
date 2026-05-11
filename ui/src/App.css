@@ -121,6 +121,11 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+.btn[data-active] {
+  background: var(--c-ink-3);
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
 .btn[data-variant="primary"] {
   background: var(--c-accent);
   color: var(--c-ink-0);
@@ -2085,6 +2090,17 @@ input[type="range"] {
   gap: var(--s-3);
   flex-wrap: wrap;
 }
+/* Monaco エディタ + 右サイド docs の splitter。Docs open 時は flex で並列、
+   閉じている時は editor が 100%。 */
+.script-editor-main {
+  display: flex;
+  gap: var(--s-3);
+  width: 100%;
+  min-width: 0;
+}
+.script-editor-main[data-docs-open] .script-editor-monaco {
+  flex: 1 1 60%;
+}
 /* Monaco エディタの container。height は明示しないと内部の "height: 100%" が
    0 に解決されて editor が極端に小さくなる (flex chain で実 px が降ってこない
    ケースがあるため)。Node tab と同じ 480px 固定にしておく。 */
@@ -2094,6 +2110,117 @@ input[type="range"] {
   border: 1px solid var(--c-ink-5);
   border-radius: var(--r-2);
   overflow: hidden;
+  min-width: 0;
+}
+/* --- Docs side panel --- */
+.script-docs {
+  flex: 0 0 360px;
+  height: 480px;
+  background: var(--c-ink-2);
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.script-docs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--c-ink-5);
+  background: var(--c-ink-3);
+}
+.script-docs-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-small);
+  letter-spacing: 0.04em;
+}
+.script-docs-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+.script-docs-body section {
+  margin-bottom: var(--s-4);
+}
+.script-docs-body h4 {
+  margin: 0 0 var(--s-2) 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--c-ink-9);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--c-ink-5);
+  padding-bottom: 4px;
+}
+.script-docs-body p {
+  margin: 0 0 var(--s-2) 0;
+  color: var(--c-ink-11);
+}
+.script-docs-body dl {
+  margin: 0;
+}
+.script-docs-body dt {
+  margin-top: var(--s-2);
+}
+.script-docs-body dt code {
+  background: var(--c-ink-3);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--c-accent);
+}
+.script-docs-body dd {
+  margin: 4px 0 var(--s-2) 0;
+  color: var(--c-ink-11);
+  padding-left: var(--s-2);
+}
+.script-docs-body code {
+  background: var(--c-ink-3);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.script-docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-micro);
+}
+.script-docs-table td {
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+}
+.script-docs-table td:first-child {
+  white-space: nowrap;
+}
+.script-docs-body kbd {
+  display: inline-block;
+  padding: 1px 4px;
+  background: var(--c-ink-3);
+  border: 1px solid var(--c-ink-5);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.script-docs-code {
+  margin: 4px 0 var(--s-2) 0;
+  padding: var(--s-2) var(--s-3);
+  background: #0e1014;
+  border: 1px solid var(--c-ink-5);
+  border-radius: var(--r-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #d8dce4;
+  overflow-x: auto;
+  white-space: pre;
 }
 /* Monaco の内部 widget (suggest popup 等) は theme=vs-dark に任せる。
    カスタム CSS を被せると suggest 候補のテキストが消える場合があった。 */

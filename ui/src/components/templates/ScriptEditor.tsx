@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ipc, type TemplateFull } from "@/lib/ipc";
 
 import { CONDUCTION_THEME, registerConductionLuaProvider } from "./monacoSetup";
+import { ScriptDocs } from "./ScriptDocs";
 
 const MARKER_OWNER = "conduction-lua";
 
@@ -40,6 +41,7 @@ export function ScriptEditor({
   const [error, setError] = useState<string | null>(null);
   const [compiling, setCompiling] = useState(false);
   const [lastCompiledAt, setLastCompiledAt] = useState<number | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false);
 
   // Monaco の editor / monaco instance への参照。マーカー操作用。
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -134,6 +136,16 @@ export function ScriptEditor({
     );
   }, [handleCompile]);
 
+  // Esc で docs を閉じる
+  useEffect(() => {
+    if (!docsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDocsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [docsOpen]);
+
   return (
     <div className="script-editor">
       <div className="script-editor-toolbar">
@@ -147,40 +159,49 @@ export function ScriptEditor({
         >
           {compiling ? "Compiling…" : "Compile"}
         </button>
+        <button
+          type="button"
+          className="btn"
+          data-active={docsOpen || undefined}
+          onClick={() => setDocsOpen((v) => !v)}
+          title="Toggle Conduction Lua reference (Esc to close)"
+        >
+          {docsOpen ? "Docs ✕" : "Docs"}
+        </button>
         <span className="hint" style={{ fontSize: "var(--fs-micro)" }}>
-          Globals: <code>duration_beats</code> · <code>set_duration(n)</code> ·{" "}
-          <code>add_keyframe(target, beat, value [, curve])</code> ·{" "}
-          <code>add_track(target, table)</code>
-          {lastCompiledAt && (
-            <> · Compiled OK — open Visual / Node to inspect, Save to persist</>
-          )}
+          {lastCompiledAt
+            ? "Compiled OK — open Visual / Node to inspect, Save to persist"
+            : "⌘/Ctrl + Enter to Compile"}
         </span>
       </div>
-      <div className="script-editor-monaco">
-        <Editor
-          height="100%"
-          language="lua"
-          theme={CONDUCTION_THEME}
-          value={source}
-          onChange={(v) => setSource(v ?? "")}
-          onMount={handleMount}
-          options={{
-            readOnly: !editable,
-            // フォント未指定で Monaco デフォルトに任せる (suggest widget の text が
-            // 消える問題の切り分け)。
-            fontFamily: "Menlo, Monaco, Consolas, monospace",
-            fontSize: 13,
-            tabSize: 2,
-            insertSpaces: true,
-            minimap: { enabled: false },
-            wordWrap: "on",
-            scrollBeyondLastLine: false,
-            renderWhitespace: "selection",
-            quickSuggestions: { other: true, comments: false, strings: true },
-            suggestOnTriggerCharacters: true,
-            automaticLayout: true,
-          }}
-        />
+      <div className="script-editor-main" data-docs-open={docsOpen || undefined}>
+        <div className="script-editor-monaco">
+          <Editor
+            height="100%"
+            language="lua"
+            theme={CONDUCTION_THEME}
+            value={source}
+            onChange={(v) => setSource(v ?? "")}
+            onMount={handleMount}
+            options={{
+              readOnly: !editable,
+              // フォント未指定で Monaco デフォルトに任せる (suggest widget の text が
+              // 消える問題の切り分け)。
+              fontFamily: "Menlo, Monaco, Consolas, monospace",
+              fontSize: 13,
+              tabSize: 2,
+              insertSpaces: true,
+              minimap: { enabled: false },
+              wordWrap: "on",
+              scrollBeyondLastLine: false,
+              renderWhitespace: "selection",
+              quickSuggestions: { other: true, comments: false, strings: true },
+              suggestOnTriggerCharacters: true,
+              automaticLayout: true,
+            }}
+          />
+        </div>
+        {docsOpen && <ScriptDocs onClose={() => setDocsOpen(false)} />}
       </div>
       {error && <pre className="script-editor-error">{error}</pre>}
     </div>
