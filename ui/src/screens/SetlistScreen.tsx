@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { SetlistOverview } from "@/components/setlist/SetlistOverview";
 import {
   ipc,
   type CueDto,
@@ -233,6 +234,14 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
           <p className="hint">Select or create a setlist to start.</p>
         )}
       </div>
+
+      {selected && (
+        <SetlistOverview
+          setlist={selected}
+          tracksById={tracksById}
+          presets={presets}
+        />
+      )}
     </section>
   );
 }
