@@ -1,5 +1,5 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SetlistOverview } from "@/components/setlist/SetlistOverview";
 import {
@@ -36,9 +36,16 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
   const [newName, setNewName] = useState("");
   const [lastImport, setLastImport] = useState<SetlistImportReport | null>(null);
 
+  // refresh の世代カウンタ。古い応答が新しい応答を後から上書きするのを防ぐ。
+  // 操作を連打した時に listSetlists() の resolve 順が逆転しても、新しい呼び出しが
+  // gen を進めるので古い resolve は setState を呑む。
+  const refreshGenRef = useRef(0);
+
   const refresh = useCallback(async () => {
+    const gen = ++refreshGenRef.current;
     try {
       const list = await ipc.listSetlists();
+      if (gen !== refreshGenRef.current) return; // newer refresh in flight
       setSetlists(list);
       setError(null);
       // 削除直後は selectedId が消えるので、先頭を選び直す
@@ -47,6 +54,7 @@ export function SetlistScreen({ tracks, onLoadToDeck }: SetlistScreenProps) {
         return list[0]?.id ?? null;
       });
     } catch (e) {
+      if (gen !== refreshGenRef.current) return;
       setError(String(e));
     }
   }, []);
