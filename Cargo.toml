@@ -17,7 +17,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.82"
-license = "UNLICENSED"
+license = "MIT"
 authors = ["Conduction Contributors"]
 repository = "https://github.com/xxvw/conduction"
 
