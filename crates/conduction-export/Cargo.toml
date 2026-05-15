@@ -19,3 +19,6 @@ utoipa = "5"
 
 # Phase 2 以降で実際の PDB / ANLZ writer を組む。Phase 1 では依存セットアップのみ。
 rekordcrate = "0.3"
+
+[dev-dependencies]
+serde_json.workspace = true

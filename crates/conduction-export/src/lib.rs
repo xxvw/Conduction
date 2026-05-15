@@ -12,6 +12,9 @@
 
 #![forbid(unsafe_code)]
 
+pub mod format;
+pub use format::{Format, FormatInfo, TargetKind};
+
 use std::path::PathBuf;
 
 use conduction_analysis::WaveformPreview;
