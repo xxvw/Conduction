@@ -18,9 +18,14 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
+use crate::export_state::ExportRegistryHandle;
 use crate::setlist_state::SetlistHandle;
 use conduction_conductor::Template;
 use conduction_core::{Setlist, SetlistEntry, SetlistEntryId, SetlistId, TransitionSpec};
+use conduction_export::{
+    ConflictStrategy, ExportOptions, Format, FormatInfo, ImportOptions, LibraryExportReport,
+    LibraryImportReport,
+};
 use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::settings::{AppSettings, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
@@ -1245,4 +1250,67 @@ pub fn yt_download(
         }),
     );
     result
+}
+
+// ======== Library-level export / import (format-aware) ========
+//
+// These commands dispatch on a Format chosen by the UI to a plugin
+// registered in the ExportRegistryHandle. Phase 0 ships the scaffold;
+// concrete plugins land in Phase 1+ (rekordbox XML), Phase 6+ (Serato),
+// etc. Until then every Format returns "no exporter registered".
+
+#[tauri::command]
+pub fn list_export_formats(registry: State<'_, ExportRegistryHandle>) -> Vec<FormatInfo> {
+    registry.0.export_formats()
+}
+
+#[tauri::command]
+pub fn list_import_formats(registry: State<'_, ExportRegistryHandle>) -> Vec<FormatInfo> {
+    registry.0.import_formats()
+}
+
+#[tauri::command]
+pub fn library_export(
+    registry: State<'_, ExportRegistryHandle>,
+    library: State<'_, LibraryHandle>,
+    format: Format,
+    destination: String,
+    dry_run: Option<bool>,
+    extra: Option<serde_json::Value>,
+) -> CmdResult<LibraryExportReport> {
+    let exporter = registry
+        .0
+        .exporter(format)
+        .ok_or_else(|| format!("no exporter registered for {}", format.id()))?;
+    let options = ExportOptions {
+        destination: PathBuf::from(destination),
+        dry_run: dry_run.unwrap_or(false),
+        extra,
+    };
+    library
+        .with_library(|lib| exporter.export(lib, &options))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_import(
+    registry: State<'_, ExportRegistryHandle>,
+    library: State<'_, LibraryHandle>,
+    format: Format,
+    source: String,
+    conflict_strategy: Option<ConflictStrategy>,
+    extra: Option<serde_json::Value>,
+) -> CmdResult<LibraryImportReport> {
+    let importer = registry
+        .0
+        .importer(format)
+        .ok_or_else(|| format!("no importer registered for {}", format.id()))?;
+    let options = ImportOptions {
+        source: PathBuf::from(source),
+        conflict_strategy: conflict_strategy.unwrap_or_default(),
+        extra,
+    };
+    library
+        .with_library(|lib| importer.import(lib, &options))
+        .map_err(|e| e.to_string())
 }
