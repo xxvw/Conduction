@@ -6,6 +6,7 @@
 
 pub mod audio_engine;
 pub mod commands;
+pub mod export_state;
 pub mod http_api;
 pub mod library_state;
 pub mod settings;
@@ -28,6 +29,8 @@ pub fn run() {
     let library = library_state::LibraryHandle::open_default().expect("library must open");
     let setlists = setlist_state::SetlistHandle::new(library.shared());
     let stats = system_stats::SystemStatsHandle::new();
+    let export_registry =
+        export_state::ExportRegistryHandle::new(conduction_export::default_registry());
     info!("conduction-app booting");
 
     // localhost WebAPI を別スレッドで起動。Tauri と同じ State インスタンスを共有する。
@@ -49,6 +52,7 @@ pub fn run() {
         .manage(stats)
         .manage(settings)
         .manage(setlists)
+        .manage(export_registry)
         .invoke_handler(tauri::generate_handler![
             commands::load_track,
             commands::play,
@@ -115,6 +119,10 @@ pub fn run() {
             commands::setlist_set_transition,
             commands::setlist_export,
             commands::setlist_import,
+            commands::list_export_formats,
+            commands::list_import_formats,
+            commands::library_export,
+            commands::library_import,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
