@@ -12,7 +12,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod format;
+pub use api::{
+    ConflictStrategy, ExportOptions, Exporter, ImportOptions, Importer, LibraryExportReport,
+    LibraryImportReport,
+};
 pub use format::{Format, FormatInfo, TargetKind};
 
 use std::path::PathBuf;
