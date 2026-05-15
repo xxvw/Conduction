@@ -77,7 +77,7 @@ mod tests {
         }
         fn export(
             &self,
-            _library: &Library,
+            _library: &mut Library,
             _options: &ExportOptions,
         ) -> Result<LibraryExportReport, ExportError> {
             Err(ExportError::NotImplemented)
@@ -91,7 +91,7 @@ mod tests {
         }
         fn import(
             &self,
-            _library: &Library,
+            _library: &mut Library,
             _options: &ImportOptions,
         ) -> Result<LibraryImportReport, ExportError> {
             Err(ExportError::NotImplemented)

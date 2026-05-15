@@ -85,6 +85,11 @@ pub struct LibraryImportReport {
 }
 
 /// One direction (out) of a format plugin.
+///
+/// Takes `&mut Library` because `conduction-library::Library` uses a raw
+/// `rusqlite::Connection` (no internal Mutex), and even read-only queries on
+/// SQLite go through `&mut self` to keep the borrow story honest about
+/// statement caching.
 pub trait Exporter: Send + Sync {
     fn format(&self) -> Format;
     fn label(&self) -> &'static str {
@@ -93,7 +98,7 @@ pub trait Exporter: Send + Sync {
 
     fn export(
         &self,
-        library: &Library,
+        library: &mut Library,
         options: &ExportOptions,
     ) -> Result<LibraryExportReport, ExportError>;
 }
@@ -107,7 +112,7 @@ pub trait Importer: Send + Sync {
 
     fn import(
         &self,
-        library: &Library,
+        library: &mut Library,
         options: &ImportOptions,
     ) -> Result<LibraryImportReport, ExportError>;
 }
