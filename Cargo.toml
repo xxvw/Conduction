@@ -12,6 +12,7 @@ members = [
     "crates/conduction-script",
     "crates/conduction-app",
 ]
+exclude = ["rekordbox-serato-bridge"]
 
 [workspace.package]
 version = "0.1.0"

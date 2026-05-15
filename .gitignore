@@ -49,3 +49,7 @@ last_session.toml
 
 # --- Claude Code ---
 .claude/
+
+# --- Sibling repository: rekordbox-serato-bridge ---
+# Cloned in-place but managed as a separate git repo with its own remote.
+rekordbox-serato-bridge/
