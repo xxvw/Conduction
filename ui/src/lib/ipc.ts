@@ -242,6 +242,40 @@ export const ipc = {
     return call<ExportReport>("export_execute", { destination });
   },
 
+  // --- Library-level export / import (format-aware) ---
+  listExportFormats() {
+    return call<FormatInfo[]>("list_export_formats");
+  },
+  listImportFormats() {
+    return call<FormatInfo[]>("list_import_formats");
+  },
+  libraryExport(options: {
+    format: LibraryFormatId;
+    destination: string;
+    dryRun?: boolean;
+    extra?: unknown;
+  }) {
+    return call<LibraryExportReport>("library_export", {
+      format: options.format,
+      destination: options.destination,
+      dryRun: options.dryRun ?? false,
+      extra: options.extra ?? null,
+    });
+  },
+  libraryImport(options: {
+    format: LibraryFormatId;
+    source: string;
+    conflictStrategy?: ConflictStrategy;
+    extra?: unknown;
+  }) {
+    return call<LibraryImportReport>("library_import", {
+      format: options.format,
+      source: options.source,
+      conflictStrategy: options.conflictStrategy ?? "skip",
+      extra: options.extra ?? null,
+    });
+  },
+
   // --- YouTube (yt-dlp) ---
   ytDlpAvailable() {
     return call<boolean>("yt_dlp_available");
@@ -458,4 +492,39 @@ export interface AppSettings {
   keybindings: KeybindingEntry[];
   audio_main_output: string | null;
   audio_cue_output: string | null;
+}
+
+// --- Library-level export / import ---
+
+export type LibraryFormatId =
+  | "cset"
+  | "rekordbox-xml"
+  | "rekordbox-usb"
+  | "serato";
+
+export type TargetKind = "file" | "directory" | "in-place";
+
+export type ConflictStrategy = "skip" | "update" | "replace";
+
+export interface FormatInfo {
+  format: LibraryFormatId;
+  id: string;
+  label: string;
+  target_kind: TargetKind;
+  available: boolean;
+}
+
+export interface LibraryExportReport {
+  format: LibraryFormatId;
+  tracks_written: number;
+  bytes_written: number;
+  warnings: string[];
+}
+
+export interface LibraryImportReport {
+  format: LibraryFormatId;
+  tracks_imported: number;
+  tracks_updated: number;
+  tracks_skipped: number;
+  warnings: string[];
 }

@@ -12,6 +12,16 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api;
+pub mod format;
+pub mod registry;
+pub use api::{
+    ConflictStrategy, ExportOptions, Exporter, ImportOptions, Importer, LibraryExportReport,
+    LibraryImportReport,
+};
+pub use format::{Format, FormatInfo, TargetKind};
+pub use registry::{default_registry, PluginRegistry};
+
 use std::path::PathBuf;
 
 use conduction_analysis::WaveformPreview;

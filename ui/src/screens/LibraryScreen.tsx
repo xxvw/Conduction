@@ -1,7 +1,14 @@
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
-import { ipc, type ExportPreview } from "@/lib/ipc";
+import { FormatPickerModal } from "@/components/library/FormatPickerModal";
+import {
+  ipc,
+  type ExportPreview,
+  type FormatInfo,
+  type LibraryExportReport,
+  type LibraryImportReport,
+} from "@/lib/ipc";
 import type { DeckId } from "@/types/mixer";
 import type { TrackSummary } from "@/types/track";
 
@@ -75,6 +82,43 @@ export function LibraryScreen({
     | { state: "preview"; preview: ExportPreview }
     | { state: "error"; error: string }
   >({ state: "idle" });
+
+  // Library-level export / import (format-aware)
+  const [pickerMode, setPickerMode] = useState<"export" | "import" | null>(
+    null,
+  );
+  const [libraryResult, setLibraryResult] = useState<
+    | { kind: "export"; report: LibraryExportReport }
+    | { kind: "import"; report: LibraryImportReport }
+    | { kind: "error"; message: string }
+    | null
+  >(null);
+
+  const handleLibraryFormatPicked = useCallback(async (f: FormatInfo) => {
+    const mode = pickerMode;
+    setPickerMode(null);
+    if (!mode) return;
+    try {
+      if (mode === "export") {
+        const destination = await pickExportDestination(f);
+        if (!destination) return;
+        const report = await ipc.libraryExport({
+          format: f.format,
+          destination,
+        });
+        setLibraryResult({ kind: "export", report });
+      } else {
+        const source = await pickImportSource(f);
+        if (!source) return;
+        const report = await ipc.libraryImport({ format: f.format, source });
+        setLibraryResult({ kind: "import", report });
+        await refresh();
+      }
+    } catch (e) {
+      setLibraryResult({ kind: "error", message: String(e) });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickerMode]);
 
   const [demoCueResult, setDemoCueResult] = useState<string | null>(null);
   const handleInjectDemoCues = useCallback(async () => {
@@ -152,6 +196,21 @@ export function LibraryScreen({
         >
           {exportInfo.state === "previewing" ? "Previewing…" : "Export to USB…"}
         </button>
+        <button
+          className="btn"
+          onClick={() => setPickerMode("export")}
+          disabled={tracks.length === 0}
+          title="Export the library to rekordbox / Serato / .cset"
+        >
+          Export Library…
+        </button>
+        <button
+          className="btn"
+          onClick={() => setPickerMode("import")}
+          title="Import a rekordbox / Serato / .cset library"
+        >
+          Import Library…
+        </button>
         <span className="track-count">
           {filtered.length}
           {filtered.length !== tracks.length && <> / {tracks.length}</>} tracks
@@ -205,6 +264,68 @@ export function LibraryScreen({
           </p>
         </div>
       )}
+      {libraryResult && (
+        <div
+          className="hint"
+          style={{
+            color:
+              libraryResult.kind === "error"
+                ? "var(--c-danger)"
+                : "var(--c-ink-9)",
+          }}
+        >
+          {libraryResult.kind === "export" && (
+            <>
+              Exported {libraryResult.report.tracks_written} track(s) as{" "}
+              <code>{libraryResult.report.format}</code>
+              {libraryResult.report.warnings.length > 0 && (
+                <>. {libraryResult.report.warnings.length} warning(s)</>
+              )}
+              .{" "}
+              <button
+                className="chip"
+                onClick={() => setLibraryResult(null)}
+                style={{ marginLeft: "var(--s-2)" }}
+              >
+                ×
+              </button>
+            </>
+          )}
+          {libraryResult.kind === "import" && (
+            <>
+              Imported {libraryResult.report.tracks_imported} new,{" "}
+              {libraryResult.report.tracks_updated} updated,{" "}
+              {libraryResult.report.tracks_skipped} skipped (
+              <code>{libraryResult.report.format}</code>).{" "}
+              <button
+                className="chip"
+                onClick={() => setLibraryResult(null)}
+                style={{ marginLeft: "var(--s-2)" }}
+              >
+                ×
+              </button>
+            </>
+          )}
+          {libraryResult.kind === "error" && (
+            <>
+              Library operation failed: {libraryResult.message}{" "}
+              <button
+                className="chip"
+                onClick={() => setLibraryResult(null)}
+                style={{ marginLeft: "var(--s-2)" }}
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      <FormatPickerModal
+        mode={pickerMode ?? "export"}
+        open={pickerMode !== null}
+        onClose={() => setPickerMode(null)}
+        onPick={handleLibraryFormatPicked}
+      />
       {exportInfo.state === "error" && (
         <p className="hint" style={{ color: "var(--c-danger)" }}>
           Export preview failed: {exportInfo.error}
@@ -317,4 +438,41 @@ function formatBytes(n: number): string {
     i++;
   }
   return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+}
+
+async function pickExportDestination(f: FormatInfo): Promise<string | null> {
+  if (f.target_kind === "file") {
+    const ext = formatExtension(f.format);
+    const result = await save({
+      defaultPath: ext ? `library.${ext}` : "library",
+      filters: ext ? [{ name: f.label, extensions: [ext] }] : undefined,
+    });
+    return result ?? null;
+  }
+  const result = await open({ directory: true, multiple: false });
+  return typeof result === "string" ? result : null;
+}
+
+async function pickImportSource(f: FormatInfo): Promise<string | null> {
+  if (f.target_kind === "file") {
+    const ext = formatExtension(f.format);
+    const result = await open({
+      multiple: false,
+      filters: ext ? [{ name: f.label, extensions: [ext] }] : undefined,
+    });
+    return typeof result === "string" ? result : null;
+  }
+  const result = await open({ directory: true, multiple: false });
+  return typeof result === "string" ? result : null;
+}
+
+function formatExtension(format: string): string {
+  switch (format) {
+    case "cset":
+      return "cset";
+    case "rekordbox-xml":
+      return "xml";
+    default:
+      return "";
+  }
 }
