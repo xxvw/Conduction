@@ -16,16 +16,19 @@
 use serde::{Deserialize, Serialize};
 
 use super::collection::Collection;
+use super::playlists::Playlists;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename = "DJ_PLAYLISTS")]
 pub struct DjPlaylists {
     #[serde(rename = "@Version", default = "default_version")]
     pub version: String,
-    #[serde(rename = "PRODUCT", default)]
+    #[serde(rename = "PRODUCT", default, skip_serializing_if = "Option::is_none")]
     pub product: Option<Product>,
-    #[serde(rename = "COLLECTION", default)]
+    #[serde(rename = "COLLECTION", default, skip_serializing_if = "Option::is_none")]
     pub collection: Option<Collection>,
+    #[serde(rename = "PLAYLISTS", default, skip_serializing_if = "Option::is_none")]
+    pub playlists: Option<Playlists>,
 }
 
 impl Default for DjPlaylists {
@@ -34,6 +37,7 @@ impl Default for DjPlaylists {
             version: default_version(),
             product: None,
             collection: None,
+            playlists: None,
         }
     }
 }
@@ -81,6 +85,7 @@ mod tests {
                 company: "AlphaTheta".into(),
             }),
             collection: None,
+            playlists: None,
         };
         let s = quick_xml::se::to_string(&dj).unwrap();
         assert!(s.contains(r#"Version="1.0.0""#));

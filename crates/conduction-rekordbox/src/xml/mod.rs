@@ -10,6 +10,8 @@
 
 pub mod collection;
 pub mod header;
+pub mod playlists;
 
 pub use collection::{Collection, PositionMark, Tempo, Track};
 pub use header::{DjPlaylists, Product};
+pub use playlists::{Node, PlaylistTrackRef, Playlists};

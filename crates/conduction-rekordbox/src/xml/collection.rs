@@ -5,6 +5,11 @@
 //! model keeps the ones Conduction actively consumes (BPM, key, hot
 //! cues, beatgrid) and accepts the rest verbatim by treating every
 //! attribute as `Option<String>` so unknown values pass through.
+//!
+//! Every `Option<T>` attribute is annotated with
+//! `skip_serializing_if = "Option::is_none"` so `None` values don't
+//! emit empty `Attr=""`, which would otherwise fail round-tripping
+//! through numeric types (`"" → u32` is an error).
 
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +20,7 @@ pub struct Collection {
     /// rekordbox.app writes this even though it's redundant with `tracks.len()`.
     #[serde(rename = "@Entries", default)]
     pub entries: u32,
-    #[serde(rename = "TRACK", default)]
+    #[serde(rename = "TRACK", default, skip_serializing_if = "Vec::is_empty")]
     pub tracks: Vec<Track>,
 }
 
@@ -27,62 +32,62 @@ pub struct Collection {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename = "TRACK")]
 pub struct Track {
-    #[serde(rename = "@TrackID", default)]
+    #[serde(rename = "@TrackID", default, skip_serializing_if = "Option::is_none")]
     pub track_id: Option<u32>,
-    #[serde(rename = "@Name", default)]
+    #[serde(rename = "@Name", default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(rename = "@Artist", default)]
+    #[serde(rename = "@Artist", default, skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
-    #[serde(rename = "@Composer", default)]
+    #[serde(rename = "@Composer", default, skip_serializing_if = "Option::is_none")]
     pub composer: Option<String>,
-    #[serde(rename = "@Album", default)]
+    #[serde(rename = "@Album", default, skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
-    #[serde(rename = "@Grouping", default)]
+    #[serde(rename = "@Grouping", default, skip_serializing_if = "Option::is_none")]
     pub grouping: Option<String>,
-    #[serde(rename = "@Genre", default)]
+    #[serde(rename = "@Genre", default, skip_serializing_if = "Option::is_none")]
     pub genre: Option<String>,
-    #[serde(rename = "@Kind", default)]
+    #[serde(rename = "@Kind", default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
-    #[serde(rename = "@Size", default)]
+    #[serde(rename = "@Size", default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
-    #[serde(rename = "@TotalTime", default)]
+    #[serde(rename = "@TotalTime", default, skip_serializing_if = "Option::is_none")]
     pub total_time: Option<u32>,
-    #[serde(rename = "@DiscNumber", default)]
+    #[serde(rename = "@DiscNumber", default, skip_serializing_if = "Option::is_none")]
     pub disc_number: Option<u32>,
-    #[serde(rename = "@TrackNumber", default)]
+    #[serde(rename = "@TrackNumber", default, skip_serializing_if = "Option::is_none")]
     pub track_number: Option<u32>,
-    #[serde(rename = "@Year", default)]
+    #[serde(rename = "@Year", default, skip_serializing_if = "Option::is_none")]
     pub year: Option<u32>,
-    #[serde(rename = "@AverageBpm", default)]
+    #[serde(rename = "@AverageBpm", default, skip_serializing_if = "Option::is_none")]
     pub average_bpm: Option<f64>,
-    #[serde(rename = "@DateAdded", default)]
+    #[serde(rename = "@DateAdded", default, skip_serializing_if = "Option::is_none")]
     pub date_added: Option<String>,
-    #[serde(rename = "@BitRate", default)]
+    #[serde(rename = "@BitRate", default, skip_serializing_if = "Option::is_none")]
     pub bit_rate: Option<u32>,
-    #[serde(rename = "@SampleRate", default)]
+    #[serde(rename = "@SampleRate", default, skip_serializing_if = "Option::is_none")]
     pub sample_rate: Option<u32>,
-    #[serde(rename = "@Comments", default)]
+    #[serde(rename = "@Comments", default, skip_serializing_if = "Option::is_none")]
     pub comments: Option<String>,
-    #[serde(rename = "@PlayCount", default)]
+    #[serde(rename = "@PlayCount", default, skip_serializing_if = "Option::is_none")]
     pub play_count: Option<u32>,
-    #[serde(rename = "@Rating", default)]
+    #[serde(rename = "@Rating", default, skip_serializing_if = "Option::is_none")]
     pub rating: Option<u32>,
     /// `"file://localhost/path"` URI; the host is usually `localhost` or empty.
-    #[serde(rename = "@Location", default)]
+    #[serde(rename = "@Location", default, skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
-    #[serde(rename = "@Remixer", default)]
+    #[serde(rename = "@Remixer", default, skip_serializing_if = "Option::is_none")]
     pub remixer: Option<String>,
     /// Camelot key (`"8A"` etc.) — rekordbox stores it under this name.
-    #[serde(rename = "@Tonality", default)]
+    #[serde(rename = "@Tonality", default, skip_serializing_if = "Option::is_none")]
     pub tonality: Option<String>,
-    #[serde(rename = "@Label", default)]
+    #[serde(rename = "@Label", default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    #[serde(rename = "@Mix", default)]
+    #[serde(rename = "@Mix", default, skip_serializing_if = "Option::is_none")]
     pub mix: Option<String>,
 
-    #[serde(rename = "TEMPO", default)]
+    #[serde(rename = "TEMPO", default, skip_serializing_if = "Vec::is_empty")]
     pub tempos: Vec<Tempo>,
-    #[serde(rename = "POSITION_MARK", default)]
+    #[serde(rename = "POSITION_MARK", default, skip_serializing_if = "Vec::is_empty")]
     pub position_marks: Vec<PositionMark>,
 }
 
@@ -118,7 +123,7 @@ pub struct PositionMark {
     pub kind: u8,
     #[serde(rename = "@Start", default)]
     pub start: f64,
-    #[serde(rename = "@End", default)]
+    #[serde(rename = "@End", default, skip_serializing_if = "Option::is_none")]
     pub end: Option<f64>,
     #[serde(rename = "@Num", default = "default_num")]
     pub num: i32,
@@ -173,5 +178,34 @@ mod tests {
         assert_eq!(t.tempos.len(), 1);
         assert_eq!(t.tempos[0].metro, "4/4");
         assert_eq!(t.tempos[0].battito, 1);
+    }
+
+    #[test]
+    fn track_round_trips_through_serde() {
+        let original = Track {
+            track_id: Some(42),
+            name: Some("Round Trip".into()),
+            artist: Some("Tester".into()),
+            average_bpm: Some(124.5),
+            tonality: Some("4A".into()),
+            location: Some("file://localhost/tmp/a.mp3".into()),
+            tempos: vec![Tempo {
+                inizio: 0.0,
+                bpm: 124.5,
+                metro: "4/4".into(),
+                battito: 1,
+            }],
+            position_marks: vec![PositionMark {
+                name: "Drop".into(),
+                kind: 0,
+                start: 32.0,
+                end: None,
+                num: 0,
+            }],
+            ..Default::default()
+        };
+        let serialized = quick_xml::se::to_string(&original).unwrap();
+        let back: Track = quick_xml::de::from_str(&serialized).unwrap();
+        assert_eq!(back, original);
     }
 }
