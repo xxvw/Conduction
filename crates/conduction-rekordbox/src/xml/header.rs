@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::collection::Collection;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename = "DJ_PLAYLISTS")]
 pub struct DjPlaylists {
@@ -22,6 +24,8 @@ pub struct DjPlaylists {
     pub version: String,
     #[serde(rename = "PRODUCT", default)]
     pub product: Option<Product>,
+    #[serde(rename = "COLLECTION", default)]
+    pub collection: Option<Collection>,
 }
 
 impl Default for DjPlaylists {
@@ -29,6 +33,7 @@ impl Default for DjPlaylists {
         Self {
             version: default_version(),
             product: None,
+            collection: None,
         }
     }
 }
@@ -75,6 +80,7 @@ mod tests {
                 version: "6.7.4".into(),
                 company: "AlphaTheta".into(),
             }),
+            collection: None,
         };
         let s = quick_xml::se::to_string(&dj).unwrap();
         assert!(s.contains(r#"Version="1.0.0""#));
