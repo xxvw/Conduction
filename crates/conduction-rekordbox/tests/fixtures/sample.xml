@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DJ_PLAYLISTS Version="1.0.0">
+  <PRODUCT Name="rekordbox" Version="6.7.4" Company="AlphaTheta"/>
+  <COLLECTION Entries="2">
+    <TRACK TrackID="1" Name="Sunrise" Artist="Aurora" Album="Dawn" Genre="House" Kind="MP3 File"
+           Size="8123456" TotalTime="240" AverageBpm="124.00" DateAdded="2026-04-01"
+           BitRate="320" SampleRate="44100" Tonality="8A" Location="file://localhost/Users/me/Music/sunrise.mp3">
+      <TEMPO Inizio="0.024" Bpm="124.00" Metro="4/4" Battito="1"/>
+      <POSITION_MARK Name="Intro" Type="0" Start="0.024" Num="0"/>
+      <POSITION_MARK Name="Drop" Type="0" Start="64.5" Num="1"/>
+      <POSITION_MARK Name="" Type="0" Start="32.0" Num="-1"/>
+    </TRACK>
+    <TRACK TrackID="2" Name="Twilight" Artist="Aurora" Genre="House" Kind="MP3 File"
+           Size="9123456" TotalTime="300" AverageBpm="126.00" DateAdded="2026-04-02"
+           BitRate="320" SampleRate="44100" Tonality="9A" Location="file://localhost/Users/me/Music/twilight.mp3">
+      <TEMPO Inizio="0.018" Bpm="126.00" Metro="4/4" Battito="1"/>
+      <TEMPO Inizio="120.0" Bpm="128.00" Metro="4/4" Battito="1"/>
+      <POSITION_MARK Name="Drop" Type="0" Start="48.0" Num="0"/>
+    </TRACK>
+  </COLLECTION>
+  <PLAYLISTS>
+    <NODE Type="0" Name="ROOT" Count="1">
+      <NODE Type="1" Name="Aurora Set" KeyType="0" Entries="2">
+        <TRACK Key="1"/>
+        <TRACK Key="2"/>
+      </NODE>
+    </NODE>
+  </PLAYLISTS>
+</DJ_PLAYLISTS>
