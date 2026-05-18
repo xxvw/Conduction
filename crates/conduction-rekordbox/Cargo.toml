@@ -9,6 +9,9 @@ repository.workspace = true
 description = "rekordbox XML / USB readers and writers, exposed as conduction-export plugins."
 
 [dependencies]
+conduction-core.workspace = true
+conduction-export.workspace = true
+conduction-library.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
@@ -16,3 +19,4 @@ quick-xml = { version = "0.38", features = ["serialize"] }
 
 [dev-dependencies]
 pretty_assertions = "1"
+tempfile = "3"

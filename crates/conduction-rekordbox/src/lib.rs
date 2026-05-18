@@ -11,4 +11,5 @@
 
 #![forbid(unsafe_code)]
 
+pub mod mapping;
 pub mod xml;
