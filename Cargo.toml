@@ -9,6 +9,7 @@ members = [
     "crates/conduction-claude",
     "crates/conduction-download",
     "crates/conduction-export",
+    "crates/conduction-rekordbox",
     "crates/conduction-script",
     "crates/conduction-app",
 ]
