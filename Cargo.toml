@@ -71,6 +71,7 @@ conduction-library = { path = "crates/conduction-library" }
 conduction-claude = { path = "crates/conduction-claude" }
 conduction-download = { path = "crates/conduction-download" }
 conduction-export = { path = "crates/conduction-export" }
+conduction-rekordbox = { path = "crates/conduction-rekordbox" }
 conduction-script = { path = "crates/conduction-script" }
 
 [profile.release]

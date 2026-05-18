@@ -29,8 +29,11 @@ pub fn run() {
     let library = library_state::LibraryHandle::open_default().expect("library must open");
     let setlists = setlist_state::SetlistHandle::new(library.shared());
     let stats = system_stats::SystemStatsHandle::new();
-    let export_registry =
-        export_state::ExportRegistryHandle::new(conduction_export::default_registry());
+    let export_registry = {
+        let mut r = conduction_export::default_registry();
+        r.register_exporter(conduction_rekordbox::RekordboxXmlExporter::new());
+        export_state::ExportRegistryHandle::new(r)
+    };
     info!("conduction-app booting");
 
     // localhost WebAPI を別スレッドで起動。Tauri と同じ State インスタンスを共有する。
