@@ -1,6 +1,7 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState } from "react";
 
+import "@/components/library/LibraryResultPanel.css";
 import { FormatPickerModal } from "@/components/library/FormatPickerModal";
 import {
   ipc,
@@ -87,10 +88,23 @@ export function LibraryScreen({
   const [pickerMode, setPickerMode] = useState<"export" | "import" | null>(
     null,
   );
+  const [libraryBusy, setLibraryBusy] = useState<"export" | "import" | null>(
+    null,
+  );
   const [libraryResult, setLibraryResult] = useState<
-    | { kind: "export"; report: LibraryExportReport }
-    | { kind: "import"; report: LibraryImportReport }
-    | { kind: "error"; message: string }
+    | {
+        kind: "export";
+        format: FormatInfo;
+        destination: string;
+        report: LibraryExportReport;
+      }
+    | {
+        kind: "import";
+        format: FormatInfo;
+        source: string;
+        report: LibraryImportReport;
+      }
+    | { kind: "error"; mode: "export" | "import"; message: string }
     | null
   >(null);
 
@@ -102,20 +116,24 @@ export function LibraryScreen({
       if (mode === "export") {
         const destination = await pickExportDestination(f);
         if (!destination) return;
+        setLibraryBusy("export");
         const report = await ipc.libraryExport({
           format: f.format,
           destination,
         });
-        setLibraryResult({ kind: "export", report });
+        setLibraryResult({ kind: "export", format: f, destination, report });
       } else {
         const source = await pickImportSource(f);
         if (!source) return;
+        setLibraryBusy("import");
         const report = await ipc.libraryImport({ format: f.format, source });
-        setLibraryResult({ kind: "import", report });
+        setLibraryResult({ kind: "import", format: f, source, report });
         await refresh();
       }
     } catch (e) {
-      setLibraryResult({ kind: "error", message: String(e) });
+      setLibraryResult({ kind: "error", mode, message: String(e) });
+    } finally {
+      setLibraryBusy(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickerMode]);
@@ -199,17 +217,18 @@ export function LibraryScreen({
         <button
           className="btn"
           onClick={() => setPickerMode("export")}
-          disabled={tracks.length === 0}
+          disabled={tracks.length === 0 || libraryBusy !== null}
           title="Export the library to rekordbox / Serato / .cset"
         >
-          Export Library…
+          {libraryBusy === "export" ? "Exporting…" : "Export Library…"}
         </button>
         <button
           className="btn"
           onClick={() => setPickerMode("import")}
+          disabled={libraryBusy !== null}
           title="Import a rekordbox / Serato / .cset library"
         >
-          Import Library…
+          {libraryBusy === "import" ? "Importing…" : "Import Library…"}
         </button>
         <span className="track-count">
           {filtered.length}
@@ -264,61 +283,16 @@ export function LibraryScreen({
           </p>
         </div>
       )}
+      {libraryBusy && (
+        <p className="hint">
+          {libraryBusy === "export" ? "Exporting library…" : "Importing library…"}
+        </p>
+      )}
       {libraryResult && (
-        <div
-          className="hint"
-          style={{
-            color:
-              libraryResult.kind === "error"
-                ? "var(--c-danger)"
-                : "var(--c-ink-9)",
-          }}
-        >
-          {libraryResult.kind === "export" && (
-            <>
-              Exported {libraryResult.report.tracks_written} track(s) as{" "}
-              <code>{libraryResult.report.format}</code>
-              {libraryResult.report.warnings.length > 0 && (
-                <>. {libraryResult.report.warnings.length} warning(s)</>
-              )}
-              .{" "}
-              <button
-                className="chip"
-                onClick={() => setLibraryResult(null)}
-                style={{ marginLeft: "var(--s-2)" }}
-              >
-                ×
-              </button>
-            </>
-          )}
-          {libraryResult.kind === "import" && (
-            <>
-              Imported {libraryResult.report.tracks_imported} new,{" "}
-              {libraryResult.report.tracks_updated} updated,{" "}
-              {libraryResult.report.tracks_skipped} skipped (
-              <code>{libraryResult.report.format}</code>).{" "}
-              <button
-                className="chip"
-                onClick={() => setLibraryResult(null)}
-                style={{ marginLeft: "var(--s-2)" }}
-              >
-                ×
-              </button>
-            </>
-          )}
-          {libraryResult.kind === "error" && (
-            <>
-              Library operation failed: {libraryResult.message}{" "}
-              <button
-                className="chip"
-                onClick={() => setLibraryResult(null)}
-                style={{ marginLeft: "var(--s-2)" }}
-              >
-                ×
-              </button>
-            </>
-          )}
-        </div>
+        <LibraryResultPanel
+          result={libraryResult}
+          onDismiss={() => setLibraryResult(null)}
+        />
       )}
       <FormatPickerModal
         mode={pickerMode ?? "export"}
@@ -426,6 +400,120 @@ function formatSec(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+type LibraryResult =
+  | {
+      kind: "export";
+      format: FormatInfo;
+      destination: string;
+      report: LibraryExportReport;
+    }
+  | {
+      kind: "import";
+      format: FormatInfo;
+      source: string;
+      report: LibraryImportReport;
+    }
+  | { kind: "error"; mode: "export" | "import"; message: string };
+
+function LibraryResultPanel({
+  result,
+  onDismiss,
+}: {
+  result: LibraryResult;
+  onDismiss: () => void;
+}) {
+  if (result.kind === "error") {
+    return (
+      <div className="library-result error">
+        <header>
+          <strong>
+            {result.mode === "export" ? "Export failed" : "Import failed"}
+          </strong>
+          <button className="chip" onClick={onDismiss}>×</button>
+        </header>
+        <pre className="library-result-error">{result.message}</pre>
+      </div>
+    );
+  }
+  if (result.kind === "export") {
+    return (
+      <div className="library-result">
+        <header>
+          <strong>Export complete · {result.format.label}</strong>
+          <button className="chip" onClick={onDismiss}>×</button>
+        </header>
+        <dl>
+          <div>
+            <dt>Destination</dt>
+            <dd className="mono">{result.destination}</dd>
+          </div>
+          <div>
+            <dt>Tracks</dt>
+            <dd>{result.report.tracks_written}</dd>
+          </div>
+          <div>
+            <dt>Bytes</dt>
+            <dd>{formatBytes(result.report.bytes_written)}</dd>
+          </div>
+        </dl>
+        {result.report.warnings.length > 0 && (
+          <details>
+            <summary>
+              {result.report.warnings.length} warning
+              {result.report.warnings.length === 1 ? "" : "s"}
+            </summary>
+            <ul>
+              {result.report.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    );
+  }
+  // import
+  return (
+    <div className="library-result">
+      <header>
+        <strong>Import complete · {result.format.label}</strong>
+        <button className="chip" onClick={onDismiss}>×</button>
+      </header>
+      <dl>
+        <div>
+          <dt>Source</dt>
+          <dd className="mono">{result.source}</dd>
+        </div>
+        <div>
+          <dt>Imported</dt>
+          <dd>{result.report.tracks_imported}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>{result.report.tracks_updated}</dd>
+        </div>
+        <div>
+          <dt>Skipped</dt>
+          <dd>{result.report.tracks_skipped}</dd>
+        </div>
+      </dl>
+      {result.report.warnings.length > 0 && (
+        <details>
+          <summary>
+            {result.report.warnings.length} warning
+            {result.report.warnings.length === 1 ? "" : "s"}
+          </summary>
+          <ul>
+            {result.report.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
 }
 
 function formatBytes(n: number): string {
