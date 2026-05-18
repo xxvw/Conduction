@@ -100,12 +100,14 @@ fn map_track(
 
     let mut position_marks: Vec<PositionMark> = Vec::with_capacity(hot_cues.len() + cues.len());
     for (slot, sec) in hot_cues {
+        // Conduction's hot-cue slot is 1..=8; rekordbox's Num is 0..=7.
+        let num = i32::from(*slot).saturating_sub(1);
         position_marks.push(PositionMark {
             name: String::new(),
             kind: 0,
             start: *sec,
             end: None,
-            num: i32::from(*slot),
+            num,
         });
     }
     // typed Cues from conduction-core become memory cues (Num = -1).

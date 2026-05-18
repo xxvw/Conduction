@@ -11,5 +11,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod exporter;
 pub mod mapping;
 pub mod xml;
+
+pub use exporter::RekordboxXmlExporter;
