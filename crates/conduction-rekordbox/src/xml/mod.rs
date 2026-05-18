@@ -7,3 +7,7 @@
 //!
 //! Phase 1 ships the data model only. Conduction <-> rekordbox mapping
 //! and a registered `Exporter`/`Importer` plugin land in Phase 2.
+
+pub mod header;
+
+pub use header::{DjPlaylists, Product};
