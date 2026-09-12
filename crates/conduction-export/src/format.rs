@@ -6,9 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Format {
     /// Conduction's own library snapshot (single JSON-ish file).
@@ -107,7 +105,11 @@ mod tests {
         let mut sorted = ids.clone();
         sorted.sort();
         sorted.dedup();
-        assert_eq!(sorted.len(), Format::all().len(), "format ids must be unique");
+        assert_eq!(
+            sorted.len(),
+            Format::all().len(),
+            "format ids must be unique"
+        );
     }
 
     #[test]

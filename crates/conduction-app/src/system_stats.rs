@@ -30,12 +30,17 @@ struct SystemStats {
     pid: Pid,
 }
 
+impl Default for SystemStatsHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SystemStatsHandle {
     pub fn new() -> Self {
         let pid = Pid::from_u32(std::process::id());
         let mut sys = System::new_with_specifics(
-            RefreshKind::new()
-                .with_processes(ProcessRefreshKind::new().with_cpu().with_memory()),
+            RefreshKind::new().with_processes(ProcessRefreshKind::new().with_cpu().with_memory()),
         );
         sys.refresh_processes_specifics(
             ProcessesToUpdate::Some(&[pid]),

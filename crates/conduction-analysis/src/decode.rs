@@ -147,7 +147,7 @@ mod tests {
         }
         let audio = decode_to_pcm(&path).expect("decode");
         assert!(audio.sample_rate > 0);
-        assert!(audio.samples.len() > 0);
+        assert!(!audio.samples.is_empty());
         assert!(audio.duration_sec() > 1.0);
     }
 

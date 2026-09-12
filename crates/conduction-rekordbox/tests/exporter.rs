@@ -47,16 +47,7 @@ fn exports_single_track_with_cues_and_beats_to_xml_file() {
     lib.set_hot_cue(track.id, 1, 0.024).unwrap();
     lib.set_hot_cue(track.id, 2, 32.5).unwrap();
 
-    let drop = Cue::new(
-        track.id,
-        64.0,
-        CueType::Drop,
-        124.0,
-        sample_key(),
-        0.9,
-        32,
-    )
-    .unwrap();
+    let drop = Cue::new(track.id, 64.0, CueType::Drop, 124.0, sample_key(), 0.9, 32).unwrap();
     lib.insert_cue(&drop).unwrap();
 
     let tmp = tempfile::NamedTempFile::with_suffix(".xml").unwrap();
@@ -94,7 +85,11 @@ fn exports_single_track_with_cues_and_beats_to_xml_file() {
     assert_eq!(t.average_bpm, Some(124.0));
     // Camelot 8A for Key::new(8, Minor)
     assert_eq!(t.tonality.as_deref(), Some("8A"));
-    assert!(t.location.as_deref().unwrap().starts_with("file://localhost/"));
+    assert!(t
+        .location
+        .as_deref()
+        .unwrap()
+        .starts_with("file://localhost/"));
 
     // One TEMPO anchor at the first beat.
     assert_eq!(t.tempos.len(), 1);
@@ -102,11 +97,14 @@ fn exports_single_track_with_cues_and_beats_to_xml_file() {
     assert_eq!(t.tempos[0].bpm, 124.0);
 
     // 2 hot cues (Num >= 0) + 1 memory cue from typed Drop (Num = -1).
-    let hot_cue_nums: Vec<i32> =
-        t.position_marks.iter().map(|m| m.num).filter(|n| *n >= 0).collect();
+    let hot_cue_nums: Vec<i32> = t
+        .position_marks
+        .iter()
+        .map(|m| m.num)
+        .filter(|n| *n >= 0)
+        .collect();
     assert_eq!(hot_cue_nums, vec![0, 1]);
-    let memory_cue_count =
-        t.position_marks.iter().filter(|m| m.num == -1).count();
+    let memory_cue_count = t.position_marks.iter().filter(|m| m.num == -1).count();
     assert_eq!(memory_cue_count, 1);
 }
 
@@ -131,5 +129,8 @@ fn dry_run_does_not_write_a_file() {
 
     assert_eq!(report.tracks_written, 1);
     assert_eq!(report.bytes_written, 0);
-    assert!(!destination.exists(), "dry_run must not touch the filesystem");
+    assert!(
+        !destination.exists(),
+        "dry_run must not touch the filesystem"
+    );
 }

@@ -86,7 +86,10 @@ impl SchroederReverb {
         ];
         Self {
             combs: comb_lens.iter().map(|&l| CombFilter::new(l)).collect(),
-            allpasses: allpass_lens.iter().map(|&l| AllPassFilter::new(l)).collect(),
+            allpasses: allpass_lens
+                .iter()
+                .map(|&l| AllPassFilter::new(l))
+                .collect(),
         }
     }
 

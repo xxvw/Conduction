@@ -170,24 +170,14 @@ fn filter_coefficients(fs: f32, pos: f32) -> Option<Coefficients<f32>> {
         // LPF
         let intensity = -pos;
         let cutoff = 80.0 + (22000.0 - 80.0) * (1.0 - intensity).powi(3);
-        Coefficients::<f32>::from_params(
-            Type::LowPass,
-            fs.hz(),
-            cutoff.hz(),
-            Q_BUTTERWORTH_F32,
-        )
-        .ok()
+        Coefficients::<f32>::from_params(Type::LowPass, fs.hz(), cutoff.hz(), Q_BUTTERWORTH_F32)
+            .ok()
     } else {
         // HPF
         let intensity = pos;
         let cutoff = 30.0 + (15000.0 - 30.0) * intensity.powi(2);
-        Coefficients::<f32>::from_params(
-            Type::HighPass,
-            fs.hz(),
-            cutoff.hz(),
-            Q_BUTTERWORTH_F32,
-        )
-        .ok()
+        Coefficients::<f32>::from_params(Type::HighPass, fs.hz(), cutoff.hz(), Q_BUTTERWORTH_F32)
+            .ok()
     }
 }
 

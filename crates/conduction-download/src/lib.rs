@@ -126,8 +126,16 @@ pub fn search(query: &str, limit: usize) -> Result<Vec<VideoSearchResult>, Downl
 }
 
 fn parse_search_entry(v: &serde_json::Value) -> VideoSearchResult {
-    let id = v.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
-    let title = v.get("title").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let id = v
+        .get("id")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let title = v
+        .get("title")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
     let url = v
         .get("webpage_url")
         .and_then(|x| x.as_str())
@@ -223,11 +231,9 @@ where
         .stderr(Stdio::piped())
         .spawn()?;
 
-    let stdout = child.stdout.take().ok_or_else(|| {
-        DownloadError::Failed {
-            code: None,
-            stderr: "failed to capture stdout".into(),
-        }
+    let stdout = child.stdout.take().ok_or_else(|| DownloadError::Failed {
+        code: None,
+        stderr: "failed to capture stdout".into(),
     })?;
     let stderr = child.stderr.take();
     let stderr_handle = stderr.map(|mut s| {

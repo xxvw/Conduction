@@ -11,9 +11,7 @@ use std::path::Path;
 use conduction_core::Track as CoreTrack;
 use conduction_library::Library;
 
-use crate::xml::{
-    Collection, DjPlaylists, Node, Playlists, PositionMark, Product, Tempo, Track,
-};
+use crate::xml::{Collection, DjPlaylists, Node, Playlists, PositionMark, Product, Tempo, Track};
 
 /// PRODUCT block written to every export.
 fn product_block() -> Product {
@@ -51,7 +49,9 @@ fn empty_playlists_block() -> Playlists {
 ///
 /// Intentionally consumes a `&mut Library` (rusqlite requires it for any
 /// query) but the call is read-only.
-pub fn library_to_dj_playlists(library: &mut Library) -> Result<DjPlaylists, conduction_library::LibraryError> {
+pub fn library_to_dj_playlists(
+    library: &mut Library,
+) -> Result<DjPlaylists, conduction_library::LibraryError> {
     let core_tracks = library.list_tracks()?;
     let mut xml_tracks: Vec<Track> = Vec::with_capacity(core_tracks.len());
     for (idx, t) in core_tracks.iter().enumerate() {

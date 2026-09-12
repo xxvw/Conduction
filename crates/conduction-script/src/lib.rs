@@ -147,7 +147,8 @@ pub fn compile_lua_to_template(
     }));
 
     // duration_beats をグローバルにセット。
-    lua.globals().set("duration_beats", opts.default_duration_beats)?;
+    lua.globals()
+        .set("duration_beats", opts.default_duration_beats)?;
 
     // set_duration(n)
     {
@@ -188,8 +189,7 @@ pub fn compile_lua_to_template(
         let state = Rc::clone(&state);
         let f = lua.create_function(
             move |_, (target_key, beat, value, curve): (String, f64, f64, Option<String>)| {
-                let target = parse_target(&target_key)
-                    .map_err(mlua::Error::external)?;
+                let target = parse_target(&target_key).map_err(mlua::Error::external)?;
                 if !beat.is_finite() || beat < 0.0 {
                     return Err(mlua::Error::external(ScriptError::InvalidBeat(format!(
                         "add_keyframe(beat={beat})"
@@ -212,10 +212,9 @@ pub fn compile_lua_to_template(
     // add_track(target, { {beat, value, curve}, ... })
     {
         let state = Rc::clone(&state);
-        let f: Function = lua.create_function(
-            move |_, (target_key, kfs_table): (String, Table)| {
-                let target = parse_target(&target_key)
-                    .map_err(mlua::Error::external)?;
+        let f: Function =
+            lua.create_function(move |_, (target_key, kfs_table): (String, Table)| {
+                let target = parse_target(&target_key).map_err(mlua::Error::external)?;
                 let mut collected: Vec<Keyframe> = Vec::new();
                 for pair in kfs_table.sequence_values::<Table>() {
                     let kf_t: Table = pair?;
@@ -226,18 +225,14 @@ pub fn compile_lua_to_template(
                         .get::<Value>("beat")
                         .ok()
                         .and_then(|v| if let Value::Nil = v { None } else { Some(v) })
-                        .map(|v| value_to_f64(v))
-                        .unwrap_or_else(|| {
-                            kf_t.get::<f64>(1).unwrap_or(0.0)
-                        });
+                        .map(value_to_f64)
+                        .unwrap_or_else(|| kf_t.get::<f64>(1).unwrap_or(0.0));
                     let value: f64 = kf_t
                         .get::<Value>("value")
                         .ok()
                         .and_then(|v| if let Value::Nil = v { None } else { Some(v) })
-                        .map(|v| value_to_f64(v))
-                        .unwrap_or_else(|| {
-                            kf_t.get::<f64>(2).unwrap_or(0.0)
-                        });
+                        .map(value_to_f64)
+                        .unwrap_or_else(|| kf_t.get::<f64>(2).unwrap_or(0.0));
                     let curve_str: String = kf_t
                         .get::<Value>("curve")
                         .ok()
@@ -253,8 +248,7 @@ pub fn compile_lua_to_template(
                             "add_track(beat={beat})"
                         ))));
                     }
-                    let curve =
-                        parse_curve(&curve_str).map_err(mlua::Error::external)?;
+                    let curve = parse_curve(&curve_str).map_err(mlua::Error::external)?;
                     collected.push(Keyframe {
                         position: TimePosition::Beats(beat),
                         value: value as f32,
@@ -266,16 +260,13 @@ pub fn compile_lua_to_template(
                     push_keyframe(&mut st, target_key.clone(), target, kf);
                 }
                 Ok(())
-            },
-        )?;
+            })?;
         lua.globals().set("add_track", f)?;
     }
 
     // Prelude を先に評価して各種ヘルパを定義する。Rust 側に新しい binding を増やさず、
     // 純 Lua で組める範囲のものはここで提供する。
-    lua.load(PRELUDE)
-        .set_name("[conduction prelude]")
-        .exec()?;
+    lua.load(PRELUDE).set_name("[conduction prelude]").exec()?;
 
     // 評価。
     lua.load(source).exec()?;
@@ -304,7 +295,9 @@ pub fn compile_lua_to_template(
 
     let template = Template {
         id: opts.template_id.unwrap_or_default(),
-        name: opts.template_name.unwrap_or_else(|| "Untitled Script".into()),
+        name: opts
+            .template_name
+            .unwrap_or_else(|| "Untitled Script".into()),
         duration_beats: st.duration_beats,
         tracks,
         source: Some(source.to_string()),
@@ -322,29 +315,19 @@ fn value_to_f64(v: Value) -> f64 {
     match v {
         Value::Integer(i) => i as f64,
         Value::Number(n) => n,
-        Value::Boolean(b) => {
-            if b {
-                1.0
-            } else {
-                0.0
-            }
-        }
+        Value::Boolean(true) => 1.0,
         _ => 0.0,
     }
 }
 
-fn push_keyframe(
-    state: &mut ScriptState,
-    target_key: String,
-    target: BuiltInTarget,
-    kf: Keyframe,
-) {
-    let entry = state.tracks.entry(target_key.clone()).or_insert_with(|| {
-        AutomationTrack {
+fn push_keyframe(state: &mut ScriptState, target_key: String, target: BuiltInTarget, kf: Keyframe) {
+    let entry = state
+        .tracks
+        .entry(target_key.clone())
+        .or_insert_with(|| AutomationTrack {
             target,
             keyframes: Vec::new(),
-        }
-    });
+        });
     entry.keyframes.push(kf);
     if !state.order.contains(&target_key) {
         state.order.push(target_key);
@@ -418,8 +401,7 @@ mod tests {
             add_keyframe("crossfader", 0, -1, "linear")
             add_keyframe("crossfader", 32, 1)
         "#;
-        let t =
-            compile_lua_to_template(src, CompileOptions::default()).unwrap();
+        let t = compile_lua_to_template(src, CompileOptions::default()).unwrap();
         assert_eq!(t.duration_beats, 32.0);
         assert_eq!(t.tracks.len(), 1);
         let track = &t.tracks[0];
@@ -490,16 +472,14 @@ mod tests {
     #[test]
     fn invalid_target_returns_error() {
         let src = r#"add_keyframe("nope", 0, 0)"#;
-        let err =
-            compile_lua_to_template(src, CompileOptions::default()).unwrap_err();
+        let err = compile_lua_to_template(src, CompileOptions::default()).unwrap_err();
         assert!(matches!(err, ScriptError::Lua(_)));
     }
 
     #[test]
     fn invalid_curve_returns_error() {
         let src = r#"add_keyframe("crossfader", 0, 0, "wobble")"#;
-        let err =
-            compile_lua_to_template(src, CompileOptions::default()).unwrap_err();
+        let err = compile_lua_to_template(src, CompileOptions::default()).unwrap_err();
         assert!(matches!(err, ScriptError::Lua(_)));
     }
 
@@ -507,17 +487,12 @@ mod tests {
     #[test]
     fn io_and_os_are_disabled() {
         // io.open は Sandbox により nil。
-        let err = compile_lua_to_template(
-            r#"io.open("/etc/passwd", "r")"#,
-            CompileOptions::default(),
-        )
-        .unwrap_err();
+        let err =
+            compile_lua_to_template(r#"io.open("/etc/passwd", "r")"#, CompileOptions::default())
+                .unwrap_err();
         assert!(matches!(err, ScriptError::Lua(_)));
-        let err = compile_lua_to_template(
-            r#"os.execute("ls")"#,
-            CompileOptions::default(),
-        )
-        .unwrap_err();
+        let err =
+            compile_lua_to_template(r#"os.execute("ls")"#, CompileOptions::default()).unwrap_err();
         assert!(matches!(err, ScriptError::Lua(_)));
     }
 
@@ -582,22 +557,18 @@ mod tests {
         assert!((xfader.keyframes[0].value - 1.0).abs() < 1e-5);
         assert!((xfader.keyframes[1].value + 1.0).abs() < 1e-5);
         // deck_eq_low.A は deck_eq_low.B に swap される
-        let has_b = t.tracks.iter().any(|tr| {
-            matches!(
-                tr.target,
-                BuiltInTarget::DeckEqLow { deck: DeckSlot::B }
-            )
-        });
+        let has_b = t
+            .tracks
+            .iter()
+            .any(|tr| matches!(tr.target, BuiltInTarget::DeckEqLow { deck: DeckSlot::B }));
         assert!(has_b);
     }
 
     #[test]
     fn set_direction_invalid_returns_error() {
-        let err = compile_lua_to_template(
-            r#"set_direction("sideways")"#,
-            CompileOptions::default(),
-        )
-        .unwrap_err();
+        let err =
+            compile_lua_to_template(r#"set_direction("sideways")"#, CompileOptions::default())
+                .unwrap_err();
         assert!(matches!(err, ScriptError::Lua(_)));
     }
 
@@ -644,8 +615,7 @@ mod tests {
             );
             // 各 track の keyframe 数を比較 (順序は to_lua_source の出力順なので
             // tracks[i] が対応している前提)。
-            for (i, (a, b)) in compiled.tracks.iter().zip(preset.tracks.iter()).enumerate()
-            {
+            for (i, (a, b)) in compiled.tracks.iter().zip(preset.tracks.iter()).enumerate() {
                 assert_eq!(
                     a.keyframes.len(),
                     b.keyframes.len(),

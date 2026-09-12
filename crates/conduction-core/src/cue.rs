@@ -117,7 +117,7 @@ impl Cue {
 
     /// セクション（開始 + 範囲）を付ける。`end > start` でなければエラー。
     pub fn with_section(mut self, range: Range<f64>) -> CoreResult<Self> {
-        if !(range.start < range.end) {
+        if range.start.partial_cmp(&range.end) != Some(std::cmp::Ordering::Less) {
             return Err(CoreError::InvalidRange {
                 start: range.start,
                 end: range.end,

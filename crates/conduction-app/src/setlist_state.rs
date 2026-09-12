@@ -69,22 +69,14 @@ impl SetlistHandle {
             .map_err(SetlistError::Library)
     }
 
-    pub fn add_entry(
-        &self,
-        id: SetlistId,
-        track_id: TrackId,
-    ) -> SetlistResult<SetlistEntry> {
+    pub fn add_entry(&self, id: SetlistId, track_id: TrackId) -> SetlistResult<SetlistEntry> {
         self.library
             .lock()
             .add_setlist_entry(id, track_id)
             .map_err(SetlistError::Library)
     }
 
-    pub fn remove_entry(
-        &self,
-        id: SetlistId,
-        entry_id: SetlistEntryId,
-    ) -> SetlistResult<()> {
+    pub fn remove_entry(&self, id: SetlistId, entry_id: SetlistEntryId) -> SetlistResult<()> {
         self.library
             .lock()
             .remove_setlist_entry(id, entry_id)

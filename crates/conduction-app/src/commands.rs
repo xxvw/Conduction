@@ -8,70 +8,69 @@ use conduction_analysis::{
     DEFAULT_WAVEFORM_BINS,
 };
 use conduction_audio::OutputDevice;
-use conduction_core::{Beat, Cue, CueId, CueType, MixRole};
-use serde::{Deserialize, Serialize};
 use conduction_core::TrackId;
+use conduction_core::{Beat, Cue, CueId, CueType, MixRole};
 use conduction_library::{build_track_from_file, Library};
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
+use crate::audio_engine::{
+    parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot,
+};
 use crate::export_state::ExportRegistryHandle;
+use crate::library_state::{LibraryHandle, TrackSummary};
 use crate::setlist_state::SetlistHandle;
+use crate::settings::{AppSettings, SettingsHandle};
+use crate::system_stats::{ResourceStats, SystemStatsHandle};
 use conduction_conductor::Template;
 use conduction_core::{Setlist, SetlistEntry, SetlistEntryId, SetlistId, TransitionSpec};
 use conduction_export::{
     ConflictStrategy, ExportOptions, Format, FormatInfo, ImportOptions, LibraryExportReport,
     LibraryImportReport,
 };
-use crate::library_state::{LibraryHandle, TrackSummary};
-use crate::settings::{AppSettings, SettingsHandle};
-use crate::system_stats::{ResourceStats, SystemStatsHandle};
 
 type CmdResult<T = ()> = Result<T, String>;
 
-fn send(handle: &AudioHandle, cmd: AudioCommand) -> CmdResult {
-    handle.send(cmd).map_err(|e| e.to_string())
+async fn send(handle: &AudioHandle, cmd: AudioCommand) -> CmdResult {
+    handle.execute(cmd).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn load_track(
+pub async fn load_track(
     audio: State<'_, AudioHandle>,
+    library: State<'_, LibraryHandle>,
     deck: String,
     path: String,
 ) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(
-        &audio,
-        AudioCommand::Load {
-            deck: id,
-            path: PathBuf::from(path),
-        },
-    )
+    crate::performance::load_track(&audio, &library, id, PathBuf::from(path))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn play(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+pub async fn play(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::Play(id))
+    send(&audio, AudioCommand::Play(id)).await
 }
 
 #[tauri::command]
-pub fn pause(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+pub async fn pause(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::Pause(id))
+    send(&audio, AudioCommand::Pause(id)).await
 }
 
 #[tauri::command]
-pub fn stop(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+pub async fn stop(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::Stop(id))
+    send(&audio, AudioCommand::Stop(id)).await
 }
 
 #[tauri::command]
-pub fn seek_deck(
+pub async fn seek_deck(
     audio: State<'_, AudioHandle>,
     deck: String,
     position_sec: f64,
@@ -84,34 +83,49 @@ pub fn seek_deck(
             position_sec,
         },
     )
+    .await
 }
 
 #[tauri::command]
-pub fn loop_in(audio: State<'_, AudioHandle>, deck: String, position_sec: f64) -> CmdResult {
+pub async fn loop_in(audio: State<'_, AudioHandle>, deck: String, position_sec: f64) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::LoopIn { deck: id, position_sec })
+    send(
+        &audio,
+        AudioCommand::LoopIn {
+            deck: id,
+            position_sec,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub fn loop_out(audio: State<'_, AudioHandle>, deck: String, position_sec: f64) -> CmdResult {
+pub async fn loop_out(audio: State<'_, AudioHandle>, deck: String, position_sec: f64) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::LoopOut { deck: id, position_sec })
+    send(
+        &audio,
+        AudioCommand::LoopOut {
+            deck: id,
+            position_sec,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub fn loop_toggle(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+pub async fn loop_toggle(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::LoopToggle(id))
+    send(&audio, AudioCommand::LoopToggle(id)).await
 }
 
 #[tauri::command]
-pub fn loop_clear(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
+pub async fn loop_clear(audio: State<'_, AudioHandle>, deck: String) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::LoopClear(id))
+    send(&audio, AudioCommand::LoopClear(id)).await
 }
 
 #[tauri::command]
-pub fn set_eq(
+pub async fn set_eq(
     audio: State<'_, AudioHandle>,
     deck: String,
     band: String,
@@ -124,17 +138,17 @@ pub fn set_eq(
         "high" | "High" => AudioCommand::SetEqHigh { deck: id, db },
         other => return Err(format!("invalid eq band: {other}")),
     };
-    send(&audio, cmd)
+    send(&audio, cmd).await
 }
 
 #[tauri::command]
-pub fn set_filter(audio: State<'_, AudioHandle>, deck: String, value: f32) -> CmdResult {
+pub async fn set_filter(audio: State<'_, AudioHandle>, deck: String, value: f32) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::SetFilter { deck: id, value })
+    send(&audio, AudioCommand::SetFilter { deck: id, value }).await
 }
 
 #[tauri::command]
-pub fn set_echo(
+pub async fn set_echo(
     audio: State<'_, AudioHandle>,
     deck: String,
     wet: f32,
@@ -151,10 +165,11 @@ pub fn set_echo(
             feedback,
         },
     )
+    .await
 }
 
 #[tauri::command]
-pub fn set_reverb(
+pub async fn set_reverb(
     audio: State<'_, AudioHandle>,
     deck: String,
     wet: f32,
@@ -163,24 +178,29 @@ pub fn set_reverb(
     let id = parse_deck(&deck)?;
     send(
         &audio,
-        AudioCommand::SetReverb { deck: id, wet, room },
+        AudioCommand::SetReverb {
+            deck: id,
+            wet,
+            room,
+        },
     )
+    .await
 }
 
 #[tauri::command]
-pub fn set_cue_send(audio: State<'_, AudioHandle>, deck: String, value: f32) -> CmdResult {
+pub async fn set_cue_send(audio: State<'_, AudioHandle>, deck: String, value: f32) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::SetCueSend { deck: id, value })
+    send(&audio, AudioCommand::SetCueSend { deck: id, value }).await
 }
 
 #[tauri::command]
-pub fn set_key_lock(audio: State<'_, AudioHandle>, deck: String, on: bool) -> CmdResult {
+pub async fn set_key_lock(audio: State<'_, AudioHandle>, deck: String, on: bool) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(&audio, AudioCommand::SetKeyLock { deck: id, on })
+    send(&audio, AudioCommand::SetKeyLock { deck: id, on }).await
 }
 
 #[tauri::command]
-pub fn set_pitch_offset(
+pub async fn set_pitch_offset(
     audio: State<'_, AudioHandle>,
     deck: String,
     semitones: f32,
@@ -193,53 +213,48 @@ pub fn set_pitch_offset(
             semitones,
         },
     )
+    .await
 }
 
 #[tauri::command]
-pub fn set_crossfader(audio: State<'_, AudioHandle>, position: f32) -> CmdResult {
-    send(&audio, AudioCommand::SetCrossfader(position))
+pub async fn set_crossfader(audio: State<'_, AudioHandle>, position: f32) -> CmdResult {
+    send(&audio, AudioCommand::SetCrossfader(position)).await
 }
 
 #[tauri::command]
-pub fn set_channel_volume(
+pub async fn set_channel_volume(
     audio: State<'_, AudioHandle>,
     deck: String,
     volume: f32,
 ) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(
-        &audio,
-        AudioCommand::SetChannelVolume { deck: id, volume },
-    )
+    send(&audio, AudioCommand::SetChannelVolume { deck: id, volume }).await
 }
 
 #[tauri::command]
-pub fn set_master_volume(audio: State<'_, AudioHandle>, volume: f32) -> CmdResult {
-    send(&audio, AudioCommand::SetMasterVolume(volume))
+pub async fn set_master_volume(audio: State<'_, AudioHandle>, volume: f32) -> CmdResult {
+    send(&audio, AudioCommand::SetMasterVolume(volume)).await
 }
 
 #[tauri::command]
-pub fn set_tempo_adjust(
+pub async fn set_tempo_adjust(
     audio: State<'_, AudioHandle>,
     deck: String,
     adjust: f32,
 ) -> CmdResult {
     let id = parse_deck(&deck)?;
-    send(
-        &audio,
-        AudioCommand::SetTempoAdjust { deck: id, adjust },
-    )
+    send(&audio, AudioCommand::SetTempoAdjust { deck: id, adjust }).await
 }
 
 #[tauri::command]
-pub fn set_tempo_range(
+pub async fn set_tempo_range(
     audio: State<'_, AudioHandle>,
     deck: String,
     percent: u8,
 ) -> CmdResult {
     let id = parse_deck(&deck)?;
     let range = parse_tempo_range(percent)?;
-    send(&audio, AudioCommand::SetTempoRange { deck: id, range })
+    send(&audio, AudioCommand::SetTempoRange { deck: id, range }).await
 }
 
 #[tauri::command]
@@ -259,7 +274,9 @@ pub fn import_track(
     let path_buf = PathBuf::from(&path);
     let track = build_track_from_file(&path_buf).map_err(|e| e.to_string())?;
     let stored = library.with_library(|lib| -> Result<_, String> {
-        let id = lib.upsert_track_by_path(&track).map_err(|e| e.to_string())?;
+        let id = lib
+            .upsert_track_by_path(&track)
+            .map_err(|e| e.to_string())?;
         let stored = lib
             .get_track(id)
             .map_err(|e| e.to_string())?
@@ -324,7 +341,11 @@ pub fn analyze_track(
     info!(path = %path.display(), "analyze_track starting");
     let started = std::time::Instant::now();
     let result = analyze_and_save_internal(&library.shared(), track_id, &path);
-    info!(elapsed_ms = started.elapsed().as_millis() as u64, ok = result.is_ok(), "analyze_track finished");
+    info!(
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        ok = result.is_ok(),
+        "analyze_track finished"
+    );
     result
 }
 
@@ -337,9 +358,8 @@ pub fn get_waveform(
     let uuid = Uuid::parse_str(&id).map_err(|e| format!("invalid track id: {e}"))?;
     let track_id = TrackId::from_uuid(uuid);
 
-    let result = library.with_library(|lib| {
-        lib.load_waveform(track_id).map_err(|e| e.to_string())
-    })?;
+    let result =
+        library.with_library(|lib| lib.load_waveform(track_id).map_err(|e| e.to_string()))?;
 
     // 波形が無いか、ビートグリッドが空（= BPM 未推定）なら、
     // バックグラウンドで解析を開始して両方を埋める。
@@ -402,7 +422,8 @@ fn analyze_and_save_internal(
     let key_estimate = estimate_key(&audio);
 
     let mut lib = library.lock();
-    lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())?;
+    lib.save_waveform(track_id, &wf)
+        .map_err(|e| e.to_string())?;
     if let Some(est) = estimate {
         let beats = est.beats(total_sec);
         info!(
@@ -463,11 +484,15 @@ pub fn get_settings(settings: State<'_, SettingsHandle>) -> AppSettings {
 }
 
 #[tauri::command]
-pub fn save_settings(
-    settings: State<'_, SettingsHandle>,
+pub async fn save_settings(
+    performance: State<'_, crate::performance::PerformanceHandle>,
     new_settings: AppSettings,
+    intent: Option<crate::settings::LegacySettingsIntent>,
 ) -> Result<(), String> {
-    settings.set(new_settings).map_err(|e| e.to_string())
+    performance
+        .save_legacy_settings(new_settings, intent)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ======== Hot Cues ========
@@ -519,9 +544,7 @@ pub fn delete_hot_cue(
 ) -> Result<(), String> {
     let uuid = Uuid::parse_str(&track_id).map_err(|e| format!("invalid track id: {e}"))?;
     let id = TrackId::from_uuid(uuid);
-    library.with_library(|lib| {
-        lib.delete_hot_cue(id, slot).map_err(|e| e.to_string())
-    })
+    library.with_library(|lib| lib.delete_hot_cue(id, slot).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -574,18 +597,12 @@ pub fn list_setlists(setlists: State<'_, SetlistHandle>) -> CmdResult<Vec<Setlis
 }
 
 #[tauri::command]
-pub fn create_setlist(
-    setlists: State<'_, SetlistHandle>,
-    name: String,
-) -> CmdResult<Setlist> {
+pub fn create_setlist(setlists: State<'_, SetlistHandle>, name: String) -> CmdResult<Setlist> {
     setlists.create(name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_setlist(
-    setlists: State<'_, SetlistHandle>,
-    id: String,
-) -> CmdResult<()> {
+pub fn delete_setlist(setlists: State<'_, SetlistHandle>, id: String) -> CmdResult<()> {
     let sid = parse_setlist_id(&id)?;
     setlists.delete(sid).map_err(|e| e.to_string())
 }
@@ -678,8 +695,7 @@ pub fn setlist_export(
 ) -> CmdResult<()> {
     let sid = parse_setlist_id(&id)?;
     let payload = setlists.export_json(sid).map_err(|e| e.to_string())?;
-    std::fs::write(&destination, payload)
-        .map_err(|e| format!("write {destination}: {e}"))?;
+    std::fs::write(&destination, payload).map_err(|e| format!("write {destination}: {e}"))?;
     Ok(())
 }
 
@@ -688,11 +704,8 @@ pub fn setlist_import(
     setlists: State<'_, SetlistHandle>,
     source: String,
 ) -> CmdResult<SetlistImportReportDto> {
-    let payload =
-        std::fs::read_to_string(&source).map_err(|e| format!("read {source}: {e}"))?;
-    let report = setlists
-        .import_json(&payload)
-        .map_err(|e| e.to_string())?;
+    let payload = std::fs::read_to_string(&source).map_err(|e| format!("read {source}: {e}"))?;
+    let report = setlists.import_json(&payload).map_err(|e| e.to_string())?;
     Ok(SetlistImportReportDto {
         setlist_id: report.setlist_id,
         setlist_name: report.setlist_name,
@@ -723,10 +736,7 @@ pub struct TemplatePresetDto {
 
 /// 内蔵プリセットおよびユーザー作成テンプレートをまとめて解決する。
 /// HTTP API からも呼ぶため、Tauri State に依存しない素の関数として公開する。
-pub fn resolve_template_impl(
-    library: &LibraryHandle,
-    preset_id: &str,
-) -> Result<Template, String> {
+pub fn resolve_template_impl(library: &LibraryHandle, preset_id: &str) -> Result<Template, String> {
     if preset_id.starts_with("preset.") {
         Template::all_presets()
             .into_iter()
@@ -785,7 +795,7 @@ pub fn get_template_preset(
 }
 
 #[tauri::command]
-pub fn start_template_preset(
+pub async fn start_template_preset(
     audio: State<'_, AudioHandle>,
     library: State<'_, LibraryHandle>,
     preset_id: String,
@@ -799,7 +809,14 @@ pub fn start_template_preset(
     if !bpm.is_finite() || bpm <= 0.0 {
         return Err(format!("invalid bpm: {bpm}"));
     }
-    send(&audio, AudioCommand::StartTemplate { template: preset, bpm })
+    send(
+        &audio,
+        AudioCommand::StartTemplate {
+            template: preset,
+            bpm,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -814,8 +831,7 @@ pub fn save_user_template(
     if t.name.trim().is_empty() {
         return Err("template name required".into());
     }
-    let payload =
-        serde_json::to_string(&t).map_err(|e| format!("serialize: {e}"))?;
+    let payload = serde_json::to_string(&t).map_err(|e| format!("serialize: {e}"))?;
     library
         .with_library(|lib| lib.save_user_template(&t.id, &t.name, &payload))
         .map_err(|e| format!("library: {e}"))?;
@@ -823,10 +839,7 @@ pub fn save_user_template(
 }
 
 #[tauri::command]
-pub fn delete_user_template(
-    library: State<'_, LibraryHandle>,
-    preset_id: String,
-) -> CmdResult {
+pub fn delete_user_template(library: State<'_, LibraryHandle>, preset_id: String) -> CmdResult {
     if !preset_id.starts_with("user.") {
         return Err(format!("not a user template: {preset_id}"));
     }
@@ -861,21 +874,18 @@ pub fn compile_lua_template(req: CompileLuaRequest) -> Result<Template, String> 
 }
 
 #[tauri::command]
-pub fn abort_template(audio: State<'_, AudioHandle>) -> CmdResult {
-    send(&audio, AudioCommand::AbortTemplate)
+pub async fn abort_template(audio: State<'_, AudioHandle>) -> CmdResult {
+    send(&audio, AudioCommand::AbortTemplate).await
 }
 
 #[tauri::command]
-pub fn override_param(
-    audio: State<'_, AudioHandle>,
-    target_key: String,
-) -> CmdResult {
+pub async fn override_param(audio: State<'_, AudioHandle>, target_key: String) -> CmdResult {
     let target = crate::audio_engine::key_to_target(&target_key)?;
-    send(&audio, AudioCommand::OverrideParam { target })
+    send(&audio, AudioCommand::OverrideParam { target }).await
 }
 
 #[tauri::command]
-pub fn resume_param(
+pub async fn resume_param(
     audio: State<'_, AudioHandle>,
     target_key: String,
     duration_beats: Option<f64>,
@@ -889,12 +899,13 @@ pub fn resume_param(
             duration_beats: dur,
         },
     )
+    .await
 }
 
 #[tauri::command]
-pub fn commit_param(audio: State<'_, AudioHandle>, target_key: String) -> CmdResult {
+pub async fn commit_param(audio: State<'_, AudioHandle>, target_key: String) -> CmdResult {
     let target = crate::audio_engine::key_to_target(&target_key)?;
-    send(&audio, AudioCommand::CommitParam { target })
+    send(&audio, AudioCommand::CommitParam { target }).await
 }
 
 // ======== Typed Cue (Cue editor / dynamic matching 用) ========
@@ -1060,10 +1071,7 @@ pub fn list_cues(
 }
 
 #[tauri::command]
-pub fn delete_cue(
-    library: State<'_, LibraryHandle>,
-    cue_id: String,
-) -> Result<(), String> {
+pub fn delete_cue(library: State<'_, LibraryHandle>, cue_id: String) -> Result<(), String> {
     let uuid = Uuid::parse_str(&cue_id).map_err(|e| format!("invalid cue id: {e}"))?;
     let id = CueId::from_uuid(uuid);
     library.with_library(|lib| lib.delete_cue(id).map_err(|e| e.to_string()))
@@ -1076,8 +1084,7 @@ pub fn delete_cue(
 /// - 戻り値は新規挿入された Cue の数。
 #[tauri::command]
 pub fn inject_demo_cues(library: State<'_, LibraryHandle>) -> Result<usize, String> {
-    let tracks = library
-        .with_library(|lib| lib.list_tracks().map_err(|e| e.to_string()))?;
+    let tracks = library.with_library(|lib| lib.list_tracks().map_err(|e| e.to_string()))?;
     let mut inserted = 0usize;
     for track in tracks {
         if track.bpm <= 0.0 {
@@ -1138,8 +1145,8 @@ pub fn list_match_candidates_impl(
     }
     let limit = args.limit.unwrap_or(8) as usize;
 
-    let pool = library
-        .with_library(|lib| lib.list_all_cues_with_tracks().map_err(|e| e.to_string()))?;
+    let pool =
+        library.with_library(|lib| lib.list_all_cues_with_tracks().map_err(|e| e.to_string()))?;
 
     let exclude = args
         .exclude_track_id
@@ -1186,9 +1193,8 @@ pub fn export_preview(
     destination: String,
 ) -> Result<conduction_export::ExportPreview, String> {
     let dest = PathBuf::from(destination);
-    let plan = library.with_library(|lib| {
-        conduction_export::build_plan(lib, dest).map_err(|e| e.to_string())
-    })?;
+    let plan = library
+        .with_library(|lib| conduction_export::build_plan(lib, dest).map_err(|e| e.to_string()))?;
     Ok(conduction_export::ExportPreview::from_plan(&plan))
 }
 
@@ -1198,9 +1204,8 @@ pub fn export_execute(
     destination: String,
 ) -> Result<conduction_export::ExportReport, String> {
     let dest = PathBuf::from(destination);
-    let plan = library.with_library(|lib| {
-        conduction_export::build_plan(lib, dest).map_err(|e| e.to_string())
-    })?;
+    let plan = library
+        .with_library(|lib| conduction_export::build_plan(lib, dest).map_err(|e| e.to_string()))?;
     conduction_export::execute(&plan).map_err(|e| e.to_string())
 }
 

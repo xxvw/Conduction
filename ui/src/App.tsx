@@ -27,12 +27,14 @@ import { useWaveform } from "@/hooks/useWaveform";
 import { secondsToBeatIndex, snapToNearestBeat } from "@/lib/beats";
 import { shortestSemitoneDiff } from "@/lib/keys";
 import { ipc } from "@/lib/ipc";
+import { performanceIpc } from "@/lib/performance";
 import {
   DEFAULT_ZOOM_SEC,
   ZOOM_LEVELS_SEC,
   type ShortcutAction,
 } from "@/lib/keybindings";
 import { LibraryScreen } from "@/screens/LibraryScreen";
+import { ControllerScreen } from "@/screens/ControllerScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { SetlistScreen } from "@/screens/SetlistScreen";
 import { TemplatesScreen } from "@/screens/TemplatesScreen";
@@ -42,6 +44,7 @@ import type { TrackSummary } from "@/types/track";
 
 type Screen =
   | "mix"
+  | "controller"
   | "library"
   | "templates"
   | "setlist"
@@ -51,6 +54,7 @@ type Screen =
 const TEMPO_RANGES: readonly [6, 10, 16] = [6, 10, 16] as const;
 
 export function App() {
+  const [performanceError, setPerformanceError] = useState<string | null>(null);
   const [screen, setScreen] = useState<Screen>("mix");
   const [activeDeck, setActiveDeck] = useState<DeckId>("A");
   const [zoomWindowSec, setZoomWindowSec] = useState<number>(DEFAULT_ZOOM_SEC);
@@ -129,11 +133,11 @@ export function App() {
         await ipc.loadTrack(oppositeDeck, c.track.path);
         const seekSec =
           (c.cue.position_beats * 60) / Math.max(1, c.cue.bpm_at_cue);
-        // ロード直後は decoder が立ち上がる僅かな遅延があるので、念のため await を 1 拍置く
-        await new Promise((r) => setTimeout(r, 200));
+        // loadTrack resolves after decoding; the subsequent seek is ordered.
         await ipc.seek(oppositeDeck, seekSec);
         setSuggestionDismissed(true);
       } catch (e) {
+        setPerformanceError(String(e));
         // eslint-disable-next-line no-console
         console.error("pick candidate failed", e);
       }
@@ -143,12 +147,13 @@ export function App() {
 
   // Enter で 1 位選択 / Esc で dismiss (要件 §6.5)
   useEffect(() => {
-    if (suggestionDismissed || activeTrackSummary == null) return;
+    if (screen !== "mix" || suggestionDismissed || activeTrackSummary == null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (keyHelpOpen) return;
+      if (e.defaultPrevented || keyHelpOpen) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (tag === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
       if (e.key === "Enter") {
         const top = matchCandidates[0];
         if (top) {
@@ -168,29 +173,15 @@ export function App() {
     activeTrackSummary,
     keyHelpOpen,
     handlePickCandidate,
+    screen,
   ]);
 
-  // BEAT SYNC: 反対デッキの effective BPM (track BPM × playback_speed) に
-  // 自分の playback_speed を合わせる。tempo_range の上限を超えるなら clamp。
+  // Both workspaces use the same continuous audio-clock sync dispatcher.
   const handleBeatSync = useCallback(
     (deck: DeckId) => {
-      if (!status) return;
-      const own = deck === "A" ? status.deck_a : status.deck_b;
-      const other = deck === "A" ? status.deck_b : status.deck_a;
-      const ownTrack = own.loaded_path ? trackByPath.get(own.loaded_path) : null;
-      const otherTrack = other.loaded_path
-        ? trackByPath.get(other.loaded_path)
-        : null;
-      if (!ownTrack || !otherTrack || ownTrack.bpm <= 0 || otherTrack.bpm <= 0) {
-        return;
-      }
-      const otherEffBpm = otherTrack.bpm * other.playback_speed;
-      const targetSpeed = otherEffBpm / ownTrack.bpm;
-      const maxAdjust = own.tempo_range_percent / 100;
-      const adjust = Math.max(-1, Math.min(1, (targetSpeed - 1.0) / maxAdjust));
-      void ipc.setTempoAdjust(deck, adjust);
+      void performanceIpc.perform({ action: "sync", deck }).catch((error: unknown) => setPerformanceError(String(error)));
     },
-    [status, trackByPath],
+    [],
   );
 
   // KEY SYNC: 反対デッキの Camelot key に対する最短半音差を pitch_offset に保存。
@@ -214,7 +205,7 @@ export function App() {
 
   const handleStartTemplate = useCallback(
     (presetId: string, bpm: number, reverse: boolean) => {
-      void ipc.startTemplatePreset(presetId, bpm, reverse);
+      void ipc.startTemplatePreset(presetId, bpm, reverse).catch((error: unknown) => setPerformanceError(String(error)));
     },
     [],
   );
@@ -228,6 +219,7 @@ export function App() {
   useEffect(() => {
     if (!status?.template) return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -239,6 +231,7 @@ export function App() {
         return;
       }
       const k = e.key.toLowerCase();
+      if (status.audio_config.mode === "external" && usesInternalMixer(focusedTarget) && ["o", "r", "c"].includes(k)) return;
       if (k === "o") {
         e.preventDefault();
         void ipc.overrideParam(focusedTarget);
@@ -252,10 +245,10 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [status?.template, focusedTarget, handleAbortTemplate]);
+  }, [status?.template, status?.audio_config.mode, focusedTarget, handleAbortTemplate]);
 
-  const handleLoadToDeck = useCallback((deck: DeckId, path: string) => {
-    void ipc.loadTrack(deck, path);
+  const handleLoadToDeck = useCallback(async (deck: DeckId, path: string) => {
+    await ipc.loadTrack(deck, path);
     setActiveDeck(deck);
     setScreen("mix");
   }, []);
@@ -403,7 +396,7 @@ export function App() {
   useShortcuts({ bindings: keyBindings.bindings, onAction: handleShortcut });
 
   return (
-    <div className="app">
+    <div className="app" data-screen={screen}>
       <header className="topbar">
         <span className="brand">Conduction</span>
         <nav className="nav">
@@ -413,6 +406,13 @@ export function App() {
             onClick={() => setScreen("mix")}
           >
             Mix
+          </button>
+          <button
+            className="nav-btn"
+            data-active={screen === "controller"}
+            onClick={() => setScreen("controller")}
+          >
+            Controller
           </button>
           <button
             className="nav-btn"
@@ -461,10 +461,22 @@ export function App() {
         >
           ⌨ Keys
         </button>
-        <MasterSlim volume={status?.master_volume ?? 1.0} />
+        <MasterSlim volume={status?.master_volume ?? 1.0} disabled={status?.audio_config.mode === "external"} />
       </header>
 
       <main className={`app-main main-${screen}`}>
+        {screen === "mix" && performanceError && <div className="ctl-notice" style={{ gridColumn: "1 / -1" }} role="alert"><span>{performanceError}</span><button className="btn" onClick={() => setPerformanceError(null)} aria-label="Dismiss performance error">×</button></div>}
+        {screen === "controller" && (
+          <ControllerScreen
+            status={status}
+            tracks={tracksHandle.tracks}
+            onSelectDeck={setActiveDeck}
+            onLoadToDeck={async (deck, path) => {
+              await ipc.loadTrack(deck, path);
+              setActiveDeck(deck);
+            }}
+          />
+        )}
         {screen === "mix" && (
           <MixScreen
             status={status}
@@ -599,8 +611,10 @@ function MixScreen({
   onFocus: (key: string) => void;
 }) {
   if (!status) return <p className="hint">audio engine connecting…</p>;
+  const externalMixer = status.audio_config.mode === "external";
   return (
     <>
+      {externalMixer && <p className="hint" role="status" style={{ gridColumn: "1 / -1" }}>External mix — EQ・Filter・チャンネル音量・マスターは外部ミキサーで操作してください。デッキFXは有効です。</p>}
       <DeckPanel
         snapshot={status.deck_a}
         trackByPath={trackByPath}
@@ -637,12 +651,14 @@ function MixScreen({
         templateStatus={status.template}
         focusedTarget={focusedTarget}
         onFocus={onFocus}
+        externalMixer={externalMixer}
       />
       <div className="transport-bar">
         <TemplateLauncher
           presets={templatePresets}
           currentBpm={activeBpm}
           onStart={onStartTemplate}
+          externalMixer={externalMixer}
         />
         <TransportStatusPanel
           status={status.template}
@@ -655,14 +671,14 @@ function MixScreen({
               (m) => m.target_key === focusedTarget,
             )?.mode ?? "idle"
           }
-          templateActive={status.template != null}
+          templateActive={status.template != null && !(externalMixer && usesInternalMixer(focusedTarget))}
         />
       </div>
     </>
   );
 }
 
-function MasterSlim({ volume }: { volume: number }) {
+function MasterSlim({ volume, disabled = false }: { volume: number; disabled?: boolean }) {
   return (
     <label className="master-slim">
       MASTER
@@ -672,6 +688,9 @@ function MasterSlim({ volume }: { volume: number }) {
         max={2}
         step={0.01}
         value={volume}
+        disabled={disabled}
+        aria-label="Master output volume"
+        title={disabled ? "External mix: adjust the master on your mixer" : undefined}
         onChange={(e) => ipc.setMasterVolume(parseFloat(e.target.value))}
       />
       <span className="value">{volume.toFixed(2)}</span>
@@ -709,6 +728,7 @@ function DeckPanel({
   onFocus: (key: string) => void;
 }) {
   const deck: DeckId = snapshot.id;
+  const externalMixer = mixerStatus?.audio_config.mode === "external";
   const loadedTrack = snapshot.loaded_path
     ? trackByPath.get(snapshot.loaded_path) ?? null
     : null;
@@ -805,7 +825,7 @@ function DeckPanel({
     return ipc.play(deck);
   }, [deck, snapshot.state]);
 
-  const canPlay = snapshot.loaded_path !== null;
+  const canPlay = snapshot.loaded_path !== null && !snapshot.loading;
   const filename = snapshot.loaded_path?.split("/").pop() ?? "";
   const positionRatio =
     snapshot.duration_sec && snapshot.duration_sec > 0
@@ -964,7 +984,7 @@ function DeckPanel({
         data-target={`deck_volume.${deck}`}
         data-mode={lookupMode(mixerStatus, `deck_volume.${deck}`)}
         data-focused={focusedTarget === `deck_volume.${deck}`}
-        onClick={() => onFocus(`deck_volume.${deck}`)}
+        onClick={() => { if (!externalMixer) onFocus(`deck_volume.${deck}`); }}
       >
         <div className="control-label">
           <span>CH VOLUME</span>
@@ -978,6 +998,8 @@ function DeckPanel({
           max={2}
           step={0.01}
           value={snapshot.channel_volume}
+          disabled={externalMixer}
+          aria-label={`Deck ${deck} channel volume`}
           onChange={(e) => ipc.setChannelVolume(deck, parseFloat(e.target.value))}
         />
       </div>
@@ -1028,9 +1050,11 @@ function DeckPanel({
           <button
             className="chip sync-chip"
             onClick={onBeatSync}
-            title="Match this deck's effective BPM to the opposite deck"
+            aria-pressed={snapshot.sync_enabled}
+            disabled={!canPlay || (!snapshot.sync_enabled && beats.length < 2)}
+            title={snapshot.sync_enabled ? (snapshot.sync_lost ? "Sync lost; disable sync" : `Following ${snapshot.sync_source === "link" ? "Pro DJ Link" : "the other deck"}; disable sync`) : "Continuously follow the Link master or the other deck"}
           >
-            BEAT SYNC
+            {snapshot.sync_lost && snapshot.sync_enabled ? "SYNC LOST" : "BEAT SYNC"}
           </button>
           <button
             className="chip sync-chip"
@@ -1062,6 +1086,7 @@ function DeckPanel({
         mixerStatus={mixerStatus}
         focusedTarget={focusedTarget}
         onFocus={onFocus}
+        externalMixer={externalMixer}
       />
 
       <LoopPad
@@ -1129,12 +1154,14 @@ function BusPanel({
   templateStatus,
   focusedTarget,
   onFocus,
+  externalMixer,
 }: {
   crossfader: number;
   master: number;
   templateStatus: import("@/types/mixer").TemplateStatus | null;
   focusedTarget: string;
   onFocus: (key: string) => void;
+  externalMixer: boolean;
 }) {
   const lookup = (key: string) =>
     templateStatus?.automation_modes.find((m) => m.target_key === key)?.mode ?? "idle";
@@ -1147,7 +1174,7 @@ function BusPanel({
         data-target="crossfader"
         data-mode={xfaderMode}
         data-focused={focusedTarget === "crossfader"}
-        onClick={() => onFocus("crossfader")}
+        onClick={() => { if (!externalMixer) onFocus("crossfader"); }}
       >
         <div className="control-label">
           <span>CROSSFADER</span>
@@ -1162,10 +1189,13 @@ function BusPanel({
           max={1}
           step={0.001}
           value={crossfader}
+          disabled={externalMixer}
+          aria-label="Mix crossfader"
           onChange={(e) => ipc.setCrossfader(parseFloat(e.target.value))}
         />
         <button
           className="btn"
+          disabled={externalMixer}
           style={{ alignSelf: "flex-end", padding: "var(--s-2) var(--s-4)" }}
           onClick={(e) => {
             e.stopPropagation();
@@ -1180,7 +1210,7 @@ function BusPanel({
         data-target="master_volume"
         data-mode={masterMode}
         data-focused={focusedTarget === "master_volume"}
-        onClick={() => onFocus("master_volume")}
+        onClick={() => { if (!externalMixer) onFocus("master_volume"); }}
       >
         <div className="control-label">
           <span>MASTER</span>
@@ -1192,6 +1222,8 @@ function BusPanel({
           max={2}
           step={0.01}
           value={master}
+          disabled={externalMixer}
+          aria-label="Mix master volume"
           onChange={(e) => ipc.setMasterVolume(parseFloat(e.target.value))}
         />
       </div>
@@ -1228,6 +1260,11 @@ function formatSec(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+/** Parameters bypassed when deck audio is routed to an external mixer. */
+function usesInternalMixer(targetKey: string): boolean {
+  return /^(crossfader|master_volume|deck_volume|deck_eq_(low|mid|high)|deck_filter)(\.|$)/.test(targetKey);
 }
 
 /** TemplateStatus から target の現在 mode を取り出す。未実行や未登録なら "idle"。 */

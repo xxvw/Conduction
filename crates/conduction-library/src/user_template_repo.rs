@@ -20,9 +20,8 @@ pub struct UserTemplateRow {
 impl Library {
     pub fn list_user_templates(&self) -> LibraryResult<Vec<UserTemplateRow>> {
         let conn = self.raw_conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, name, payload FROM user_templates ORDER BY name ASC",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, payload FROM user_templates ORDER BY name ASC")?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(UserTemplateRow {
@@ -37,9 +36,8 @@ impl Library {
 
     pub fn get_user_template(&self, id: &str) -> LibraryResult<Option<UserTemplateRow>> {
         let conn = self.raw_conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, name, payload FROM user_templates WHERE id = ?1 LIMIT 1",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, payload FROM user_templates WHERE id = ?1 LIMIT 1")?;
         let mut rows = stmt.query(params![id])?;
         match rows.next()? {
             Some(row) => Ok(Some(UserTemplateRow {
@@ -52,12 +50,7 @@ impl Library {
     }
 
     /// upsert (id 一意)。
-    pub fn save_user_template(
-        &self,
-        id: &str,
-        name: &str,
-        payload: &str,
-    ) -> LibraryResult<()> {
+    pub fn save_user_template(&self, id: &str, name: &str, payload: &str) -> LibraryResult<()> {
         if id.is_empty() {
             return Err(LibraryError::Unsupported("user template id empty".into()));
         }
@@ -89,10 +82,7 @@ impl Library {
              WHERE transition_template_id = ?1",
             params![id],
         )?;
-        let affected = tx.execute(
-            "DELETE FROM user_templates WHERE id = ?1",
-            params![id],
-        )?;
+        let affected = tx.execute("DELETE FROM user_templates WHERE id = ?1", params![id])?;
         if affected == 0 {
             return Err(LibraryError::Unsupported(format!(
                 "user template not found: {id}"
@@ -121,7 +111,8 @@ mod tests {
         assert_eq!(got.payload, "{\"x\":1}");
 
         // upsert で更新
-        lib.save_user_template("user.a", "A2", "{\"x\":99}").unwrap();
+        lib.save_user_template("user.a", "A2", "{\"x\":99}")
+            .unwrap();
         let got = lib.get_user_template("user.a").unwrap().unwrap();
         assert_eq!(got.name, "A2");
         assert_eq!(got.payload, "{\"x\":99}");
@@ -141,8 +132,8 @@ mod tests {
     /// NULL にクリアされる (dangling 参照を残さない)。
     #[test]
     fn delete_clears_referencing_setlist_transitions() {
-        use std::path::PathBuf;
         use conduction_core::{Key, KeyMode, TempoMode, Track, TransitionSpec};
+        use std::path::PathBuf;
 
         let mut lib = Library::in_memory().unwrap();
         let mut t1 = Track::placeholder(

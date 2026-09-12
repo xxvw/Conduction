@@ -122,13 +122,7 @@ mod tests {
 
     use super::*;
 
-    fn make_cue(
-        track_id: TrackId,
-        bpm: f32,
-        key: Key,
-        energy: f32,
-        roles: &[MixRole],
-    ) -> Cue {
+    fn make_cue(track_id: TrackId, bpm: f32, key: Key, energy: f32, roles: &[MixRole]) -> Cue {
         let mut c = Cue::new(track_id, 32.0, CueType::IntroStart, bpm, key, energy, 32).unwrap();
         c.mixable_as = BTreeSet::from_iter(roles.iter().copied());
         c
@@ -137,7 +131,13 @@ mod tests {
     #[test]
     fn rejects_non_entry_cue() {
         let track = Track::placeholder("/tmp/x".into(), Key::new(8, KeyMode::Minor).unwrap());
-        let cue = make_cue(track.id, 128.0, Key::new(8, KeyMode::Minor).unwrap(), 0.5, &[]);
+        let cue = make_cue(
+            track.id,
+            128.0,
+            Key::new(8, KeyMode::Minor).unwrap(),
+            0.5,
+            &[],
+        );
         let q = MatchQuery::new(128.0, Key::new(8, KeyMode::Minor).unwrap(), 0.5);
         assert!(score(&q, &cue, &track).is_none());
     }
@@ -154,7 +154,11 @@ mod tests {
         );
         let q = MatchQuery::new(128.0, Key::new(8, KeyMode::Minor).unwrap(), 0.5);
         let s = score(&q, &cue, &track).expect("must score");
-        assert!(s.overall > 0.95, "perfect match should be ~1.0, got {}", s.overall);
+        assert!(
+            s.overall > 0.95,
+            "perfect match should be ~1.0, got {}",
+            s.overall
+        );
     }
 
     #[test]
@@ -235,7 +239,10 @@ mod tests {
             0.6,
             &[MixRole::Entry],
         );
-        let pool = vec![(near.clone(), track.clone()), (exact.clone(), track.clone())];
+        let pool = vec![
+            (near.clone(), track.clone()),
+            (exact.clone(), track.clone()),
+        ];
         let q = MatchQuery::new(128.0, Key::new(8, KeyMode::Minor).unwrap(), 0.5);
         let cands = find_candidates(&q, &pool, 10);
         assert_eq!(cands.len(), 2);

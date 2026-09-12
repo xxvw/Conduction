@@ -52,13 +52,15 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
-use crate::audio_engine::{parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot};
+use crate::audio_engine::{
+    parse_deck, parse_tempo_range, AudioCommand, AudioHandle, MixerSnapshot,
+};
 use crate::commands::{
     BeatDto, CueDto, HotCueDto, InsertCueArgs, MatchCandidateDto, MatchQueryArgs, TemplatePresetDto,
 };
 use crate::library_state::{LibraryHandle, TrackSummary};
-use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::setlist_state::SetlistHandle;
+use crate::settings::{AppSettings, KeybindingEntry, SettingsHandle};
 use crate::system_stats::{ResourceStats, SystemStatsHandle};
 use crate::youtube;
 use conduction_download::{AudioFormat, VideoSearchResult};
@@ -73,6 +75,7 @@ pub struct AppState {
     pub settings: SettingsHandle,
     pub stats: SystemStatsHandle,
     pub setlists: SetlistHandle,
+    pub performance: crate::performance::PerformanceHandle,
 }
 
 /// API 起動。専用スレッドで tokio runtime を立ててから axum を block_on する。
@@ -111,8 +114,11 @@ async fn serve(state: AppState, port: u16) -> anyhow::Result<()> {
 }
 
 fn build_router(state: AppState) -> Router {
+    let mut api_doc = ApiDoc::openapi();
+    api_doc.merge(crate::performance_http::PerformanceApiDoc::openapi());
     let api = Router::new()
         .route("/api/health", get(health))
+        .merge(crate::performance_http::router())
         .route("/api/status", get(get_status))
         .route("/api/audio-devices", get(list_audio_devices))
         .route("/api/resources", get(get_resources))
@@ -154,7 +160,10 @@ fn build_router(state: AppState) -> Router {
         .route("/api/youtube/download", post(yt_download))
         .route("/api/export/preview", post(export_preview))
         .route("/api/export/execute", post(export_execute))
-        .route("/api/tracks/:id/cues", get(list_cues_for_track).post(insert_cue))
+        .route(
+            "/api/tracks/:id/cues",
+            get(list_cues_for_track).post(insert_cue),
+        )
         .route("/api/cues/:id", delete(delete_cue))
         .route("/api/match", post(list_match_candidates))
         .route("/api/templates/presets", get(list_template_presets))
@@ -166,10 +175,7 @@ fn build_router(state: AppState) -> Router {
         .route("/api/templates/commit", post(commit_param))
         .route("/api/setlists", get(list_setlists).post(create_setlist))
         .route("/api/setlists/:id", delete(delete_setlist))
-        .route(
-            "/api/setlists/:id/entries",
-            post(setlist_add_entry),
-        )
+        .route("/api/setlists/:id/entries", post(setlist_add_entry))
         .route(
             "/api/setlists/:id/entries/:entry_id",
             delete(setlist_remove_entry),
@@ -179,7 +185,7 @@ fn build_router(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http());
 
     Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", api_doc))
         .merge(api)
 }
 
@@ -212,12 +218,16 @@ impl IntoResponse for ApiError {
 type ApiResult<T> = Result<T, ApiError>;
 
 fn parse_track_id(s: &str) -> ApiResult<TrackId> {
-    let uuid = Uuid::parse_str(s).map_err(|e| ApiError::bad_request(format!("invalid track id: {e}")))?;
+    let uuid =
+        Uuid::parse_str(s).map_err(|e| ApiError::bad_request(format!("invalid track id: {e}")))?;
     Ok(TrackId::from_uuid(uuid))
 }
 
-fn send_audio(audio: &AudioHandle, cmd: AudioCommand) -> ApiResult<()> {
-    audio.send(cmd).map_err(|e| ApiError::internal(e.to_string()))
+async fn send_audio(audio: &AudioHandle, cmd: AudioCommand) -> ApiResult<()> {
+    audio
+        .execute(cmd)
+        .await
+        .map_err(|e| ApiError::internal(e.to_string()))
 }
 
 #[utoipa::path(get, path = "/api/health", responses((status = 200, body = HealthResponse)))]
@@ -264,7 +274,12 @@ async fn list_tracks(State(s): State<AppState>) -> ApiResult<Json<Vec<TrackSumma
         .library
         .with_library(|lib| {
             lib.list_tracks()
-                .map(|tracks| tracks.iter().map(TrackSummary::from_track).collect::<Vec<_>>())
+                .map(|tracks| {
+                    tracks
+                        .iter()
+                        .map(TrackSummary::from_track)
+                        .collect::<Vec<_>>()
+                })
                 .map_err(|e| e.to_string())
         })
         .map_err(ApiError::internal)?;
@@ -283,11 +298,14 @@ async fn import_track(
 ) -> ApiResult<Json<TrackSummary>> {
     info!(path = %body.path, "http import_track");
     let path_buf = PathBuf::from(&body.path);
-    let track = build_track_from_file(&path_buf).map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let track =
+        build_track_from_file(&path_buf).map_err(|e| ApiError::bad_request(e.to_string()))?;
     let stored = s
         .library
         .with_library(|lib| -> Result<_, String> {
-            let id = lib.upsert_track_by_path(&track).map_err(|e| e.to_string())?;
+            let id = lib
+                .upsert_track_by_path(&track)
+                .map_err(|e| e.to_string())?;
             let stored = lib
                 .get_track(id)
                 .map_err(|e| e.to_string())?
@@ -341,8 +359,7 @@ async fn analyze_track(
             Ok(t.path)
         })
         .map_err(ApiError::not_found)?;
-    let wf = analyze_and_save(&s.library.shared(), tid, &path)
-        .map_err(ApiError::internal)?;
+    let wf = analyze_and_save(&s.library.shared(), tid, &path).map_err(ApiError::internal)?;
     Ok(Json(wf))
 }
 
@@ -410,7 +427,10 @@ async fn set_hot_cue(
 ) -> ApiResult<StatusCode> {
     let tid = parse_track_id(&id)?;
     s.library
-        .with_library(|lib| lib.set_hot_cue(tid, slot, body.position_sec).map_err(|e| e.to_string()))
+        .with_library(|lib| {
+            lib.set_hot_cue(tid, slot, body.position_sec)
+                .map_err(|e| e.to_string())
+        })
         .map_err(ApiError::internal)?;
     Ok(StatusCode::OK)
 }
@@ -441,34 +461,30 @@ async fn load_track(
     Json(body): Json<LoadTrackRequest>,
 ) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(
-        &s.audio,
-        AudioCommand::Load {
-            deck,
-            path: PathBuf::from(body.path),
-        },
-    )?;
+    crate::performance::load_track(&s.audio, &s.library, deck, PathBuf::from(body.path))
+        .await
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
     Ok(StatusCode::OK)
 }
 
 #[utoipa::path(post, path = "/api/decks/{id}/play", responses((status = 200)))]
 async fn play(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::Play(deck))?;
+    send_audio(&s.audio, AudioCommand::Play(deck)).await?;
     Ok(StatusCode::OK)
 }
 
 #[utoipa::path(post, path = "/api/decks/{id}/pause", responses((status = 200)))]
 async fn pause(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::Pause(deck))?;
+    send_audio(&s.audio, AudioCommand::Pause(deck)).await?;
     Ok(StatusCode::OK)
 }
 
 #[utoipa::path(post, path = "/api/decks/{id}/stop", responses((status = 200)))]
 async fn stop(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::Stop(deck))?;
+    send_audio(&s.audio, AudioCommand::Stop(deck)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -490,7 +506,8 @@ async fn seek_deck(
             deck,
             position_sec: body.position_sec,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -512,7 +529,8 @@ async fn loop_in(
             deck,
             position_sec: body.position_sec,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -529,21 +547,22 @@ async fn loop_out(
             deck,
             position_sec: body.position_sec,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
 #[utoipa::path(post, path = "/api/decks/{id}/loop/toggle", responses((status = 200)))]
 async fn loop_toggle(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::LoopToggle(deck))?;
+    send_audio(&s.audio, AudioCommand::LoopToggle(deck)).await?;
     Ok(StatusCode::OK)
 }
 
 #[utoipa::path(post, path = "/api/decks/{id}/loop/clear", responses((status = 200)))]
 async fn loop_clear(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::LoopClear(deck))?;
+    send_audio(&s.audio, AudioCommand::LoopClear(deck)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -567,7 +586,7 @@ async fn set_eq(
         "high" | "High" => AudioCommand::SetEqHigh { deck, db: body.db },
         other => return Err(ApiError::bad_request(format!("invalid eq band: {other}"))),
     };
-    send_audio(&s.audio, cmd)?;
+    send_audio(&s.audio, cmd).await?;
     Ok(StatusCode::OK)
 }
 
@@ -583,7 +602,14 @@ async fn set_filter(
     Json(body): Json<ScalarRequest>,
 ) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::SetFilter { deck, value: body.value })?;
+    send_audio(
+        &s.audio,
+        AudioCommand::SetFilter {
+            deck,
+            value: body.value,
+        },
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -609,7 +635,8 @@ async fn set_echo(
             time_ms: body.time_ms,
             feedback: body.feedback,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -633,7 +660,8 @@ async fn set_reverb(
             wet: body.wet,
             room: body.room,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -644,7 +672,14 @@ async fn set_cue_send(
     Json(body): Json<ScalarRequest>,
 ) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::SetCueSend { deck, value: body.value })?;
+    send_audio(
+        &s.audio,
+        AudioCommand::SetCueSend {
+            deck,
+            value: body.value,
+        },
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -660,7 +695,7 @@ async fn set_key_lock(
     Json(body): Json<KeyLockRequest>,
 ) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::SetKeyLock { deck, on: body.on })?;
+    send_audio(&s.audio, AudioCommand::SetKeyLock { deck, on: body.on }).await?;
     Ok(StatusCode::OK)
 }
 
@@ -682,7 +717,8 @@ async fn set_pitch_offset(
             deck,
             semitones: body.semitones,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -704,7 +740,8 @@ async fn set_channel_volume(
             deck,
             volume: body.volume,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -726,7 +763,8 @@ async fn set_tempo_adjust(
             deck,
             adjust: body.adjust,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -744,7 +782,7 @@ async fn set_tempo_range(
 ) -> ApiResult<StatusCode> {
     let deck = parse_deck(&id).map_err(ApiError::bad_request)?;
     let range = parse_tempo_range(body.percent).map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::SetTempoRange { deck, range })?;
+    send_audio(&s.audio, AudioCommand::SetTempoRange { deck, range }).await?;
     Ok(StatusCode::OK)
 }
 
@@ -758,7 +796,7 @@ async fn set_crossfader(
     State(s): State<AppState>,
     Json(body): Json<CrossfaderRequest>,
 ) -> ApiResult<StatusCode> {
-    send_audio(&s.audio, AudioCommand::SetCrossfader(body.position))?;
+    send_audio(&s.audio, AudioCommand::SetCrossfader(body.position)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -767,7 +805,7 @@ async fn set_master_volume(
     State(s): State<AppState>,
     Json(body): Json<VolumeRequest>,
 ) -> ApiResult<StatusCode> {
-    send_audio(&s.audio, AudioCommand::SetMasterVolume(body.volume))?;
+    send_audio(&s.audio, AudioCommand::SetMasterVolume(body.volume)).await?;
     Ok(StatusCode::OK)
 }
 
@@ -805,8 +843,7 @@ fn default_limit() -> u32 {
 async fn yt_search(
     axum::extract::Query(q): axum::extract::Query<YtSearchQuery>,
 ) -> ApiResult<Json<Vec<VideoSearchResult>>> {
-    let results =
-        youtube::search(&q.q, q.limit as usize).map_err(ApiError::internal)?;
+    let results = youtube::search(&q.q, q.limit as usize).map_err(ApiError::internal)?;
     Ok(Json(results))
 }
 
@@ -861,8 +898,9 @@ async fn export_preview(
     let dest = std::path::PathBuf::from(body.destination);
     let library = s.library.clone();
     let preview = tokio::task::spawn_blocking(move || -> Result<ExportPreview, String> {
-        let plan = library
-            .with_library(|lib| conduction_export::build_plan(lib, dest).map_err(|e| e.to_string()))?;
+        let plan = library.with_library(|lib| {
+            conduction_export::build_plan(lib, dest).map_err(|e| e.to_string())
+        })?;
         Ok(ExportPreview::from_plan(&plan))
     })
     .await
@@ -884,8 +922,9 @@ async fn export_execute(
     let dest = std::path::PathBuf::from(body.destination);
     let library = s.library.clone();
     let report = tokio::task::spawn_blocking(move || -> Result<ExportReport, String> {
-        let plan = library
-            .with_library(|lib| conduction_export::build_plan(lib, dest).map_err(|e| e.to_string()))?;
+        let plan = library.with_library(|lib| {
+            conduction_export::build_plan(lib, dest).map_err(|e| e.to_string())
+        })?;
         conduction_export::execute(&plan).map_err(|e| e.to_string())
     })
     .await
@@ -936,11 +975,9 @@ async fn insert_cue(
 }
 
 #[utoipa::path(delete, path = "/api/cues/{id}", responses((status = 200)))]
-async fn delete_cue(
-    State(s): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<StatusCode> {
-    let uuid = Uuid::parse_str(&id).map_err(|e| ApiError::bad_request(format!("invalid cue id: {e}")))?;
+async fn delete_cue(State(s): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
+    let uuid =
+        Uuid::parse_str(&id).map_err(|e| ApiError::bad_request(format!("invalid cue id: {e}")))?;
     let cid = conduction_core::CueId::from_uuid(uuid);
     s.library
         .with_library(|lib| lib.delete_cue(cid).map_err(|e| e.to_string()))
@@ -997,13 +1034,14 @@ async fn start_template_preset(
             template: preset,
             bpm: body.bpm,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
 #[utoipa::path(post, path = "/api/templates/abort", responses((status = 200)))]
 async fn abort_template(State(s): State<AppState>) -> ApiResult<StatusCode> {
-    send_audio(&s.audio, AudioCommand::AbortTemplate)?;
+    send_audio(&s.audio, AudioCommand::AbortTemplate).await?;
     Ok(StatusCode::OK)
 }
 
@@ -1023,9 +1061,9 @@ async fn override_param(
     State(s): State<AppState>,
     Json(body): Json<OverrideRequest>,
 ) -> ApiResult<StatusCode> {
-    let target = crate::audio_engine::key_to_target(&body.target_key)
-        .map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::OverrideParam { target })?;
+    let target =
+        crate::audio_engine::key_to_target(&body.target_key).map_err(ApiError::bad_request)?;
+    send_audio(&s.audio, AudioCommand::OverrideParam { target }).await?;
     Ok(StatusCode::OK)
 }
 
@@ -1034,8 +1072,8 @@ async fn resume_param(
     State(s): State<AppState>,
     Json(body): Json<ResumeRequest>,
 ) -> ApiResult<StatusCode> {
-    let target = crate::audio_engine::key_to_target(&body.target_key)
-        .map_err(ApiError::bad_request)?;
+    let target =
+        crate::audio_engine::key_to_target(&body.target_key).map_err(ApiError::bad_request)?;
     let dur = body.duration_beats.unwrap_or(4.0).max(0.25);
     send_audio(
         &s.audio,
@@ -1043,7 +1081,8 @@ async fn resume_param(
             target,
             duration_beats: dur,
         },
-    )?;
+    )
+    .await?;
     Ok(StatusCode::OK)
 }
 
@@ -1052,9 +1091,9 @@ async fn commit_param(
     State(s): State<AppState>,
     Json(body): Json<OverrideRequest>,
 ) -> ApiResult<StatusCode> {
-    let target = crate::audio_engine::key_to_target(&body.target_key)
-        .map_err(ApiError::bad_request)?;
-    send_audio(&s.audio, AudioCommand::CommitParam { target })?;
+    let target =
+        crate::audio_engine::key_to_target(&body.target_key).map_err(ApiError::bad_request)?;
+    send_audio(&s.audio, AudioCommand::CommitParam { target }).await?;
     Ok(StatusCode::OK)
 }
 
@@ -1188,7 +1227,8 @@ fn analyze_and_save(
     let estimate = estimate_beatgrid(&audio);
     let key_estimate = estimate_key(&audio);
     let mut lib = library.lock();
-    lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())?;
+    lib.save_waveform(track_id, &wf)
+        .map_err(|e| e.to_string())?;
     if let Some(est) = estimate {
         let beats = est.beats(total_sec);
         lib.save_track_analysis(track_id, est.bpm, &beats)

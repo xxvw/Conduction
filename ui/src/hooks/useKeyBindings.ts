@@ -55,7 +55,7 @@ export function useKeyBindings() {
             key: b.key,
             label: b.label,
           })),
-        });
+        }, "keybindings");
       } catch (e) {
         console.warn("failed to persist keybindings:", e);
       }

@@ -8,6 +8,7 @@
 pub mod error;
 pub mod import;
 pub mod library;
+pub mod link_ids;
 pub mod mapping;
 pub mod schema;
 pub mod setlist_repo;

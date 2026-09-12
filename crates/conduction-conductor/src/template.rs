@@ -168,7 +168,10 @@ impl Template {
         let mut out = String::new();
         out.push_str(&format!("-- {}\n", self.name));
         out.push_str("-- Generated from a built-in preset. Edit as you like.\n\n");
-        out.push_str(&format!("set_duration({})\n\n", format_number(self.duration_beats)));
+        out.push_str(&format!(
+            "set_duration({})\n\n",
+            format_number(self.duration_beats)
+        ));
         for track in &self.tracks {
             out.push_str(&format!("-- {}\n", track.target.to_lua_key()));
             for k in &track.keyframes {
@@ -199,6 +202,7 @@ impl Template {
     /// - target が Crossfader の keyframe value は符号反転 (-1↔+1 対称)
     /// - 他の target (DeckVolume / EQ / Filter / Echo / Reverb) は deck swap で完結し
     ///   value 自体は変えない (deck A の EQ Low cut → deck B の EQ Low cut にそのまま運ぶ)
+    ///
     /// duration_beats / curve / position はそのまま。
     pub fn reversed(&self) -> Template {
         let tracks = self
@@ -684,20 +688,18 @@ mod tests {
             .find(|tr| matches!(tr.target, BuiltInTarget::Crossfader))
             .unwrap();
         let v0 = evaluate_track(xfader, 0.0, r.duration_beats, 128.0).unwrap();
-        let v_end =
-            evaluate_track(xfader, r.duration_beats, r.duration_beats, 128.0).unwrap();
+        let v_end = evaluate_track(xfader, r.duration_beats, r.duration_beats, 128.0).unwrap();
         assert!((v0 - 1.0).abs() < 1e-6);
         assert!((v_end + 1.0).abs() < 1e-6);
 
         // long_eq_mix は DeckEqLow.A の cut を含む → reversed では DeckEqLow.B になる
-        let has_eq_low_b = r.tracks.iter().any(|tr| {
-            matches!(
-                tr.target,
-                BuiltInTarget::DeckEqLow {
-                    deck: DeckSlot::B
-                }
-            )
-        });
-        assert!(has_eq_low_b, "reversed long_eq_mix should target deck B EQ Low");
+        let has_eq_low_b = r
+            .tracks
+            .iter()
+            .any(|tr| matches!(tr.target, BuiltInTarget::DeckEqLow { deck: DeckSlot::B }));
+        assert!(
+            has_eq_low_b,
+            "reversed long_eq_mix should target deck B EQ Low"
+        );
     }
 }

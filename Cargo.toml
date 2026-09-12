@@ -12,6 +12,8 @@ members = [
     "crates/conduction-rekordbox",
     "crates/conduction-script",
     "crates/conduction-app",
+    "crates/conduction-link",
+    "crates/conduction-midi",
 ]
 exclude = ["rekordbox-serato-bridge"]
 
@@ -73,6 +75,8 @@ conduction-download = { path = "crates/conduction-download" }
 conduction-export = { path = "crates/conduction-export" }
 conduction-rekordbox = { path = "crates/conduction-rekordbox" }
 conduction-script = { path = "crates/conduction-script" }
+conduction-link = { path = "crates/conduction-link" }
+conduction-midi = { path = "crates/conduction-midi" }
 
 [profile.release]
 opt-level = 3

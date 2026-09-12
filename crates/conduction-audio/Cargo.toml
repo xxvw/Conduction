@@ -10,6 +10,7 @@ description = "Realtime audio engine for Conduction."
 
 [dependencies]
 conduction-core.workspace = true
+serde.workspace = true
 cpal.workspace = true
 rodio.workspace = true
 symphonia.workspace = true

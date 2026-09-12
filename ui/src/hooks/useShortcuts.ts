@@ -14,8 +14,11 @@ interface UseShortcutsArgs {
 export function useShortcuts({ bindings = DEFAULT_BINDINGS, onAction }: UseShortcutsArgs) {
   useEffect(() => {
     function handle(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.isComposing) return;
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) {
+      if (tag === "input" || tag === "textarea" || tag === "select" ||
+          (tag === "button" && (e.key === " " || e.key === "Enter")) ||
+          (e.target as HTMLElement)?.isContentEditable) {
         return;
       }
       // case-insensitive 比較（ArrowLeft などはそのまま）

@@ -59,7 +59,7 @@ pub struct TransitionSpec {
     pub exit_cue: Option<CueId>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TempoMode {
     /// 元の BPM をそのまま保持。
@@ -67,15 +67,10 @@ pub enum TempoMode {
     /// 遷移後に次曲の BPM へジャンプ。
     MatchTarget,
     /// 遷移中に線形補間。
+    #[default]
     LinearBlend,
     /// マスターテンポを基準にする。
     MasterTempo,
-}
-
-impl Default for TempoMode {
-    fn default() -> Self {
-        Self::LinearBlend
-    }
 }
 
 #[cfg(test)]

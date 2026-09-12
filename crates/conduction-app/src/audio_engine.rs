@@ -1,6 +1,6 @@
 //! Audio engine thread host.
 //!
-//! `rodio::OutputStream` は `!Send` のため、専用スレッドで所有する。
+//! CPAL output ownership stays on a dedicated host thread; decoding uses workers.
 //! UI スレッドからは `AudioHandle` 経由で channel にコマンドを送り、
 //! スナップショットを `ArcSwap` で非同期に読み取る。
 
@@ -11,46 +11,178 @@ use std::thread;
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
-use conduction_audio::{DeckId, Mixer, OutputDevice, TempoRange};
+use conduction_audio::{AudioOutputConfig, AudioOutputStatus, DeckId, Mixer, TempoRange};
 use conduction_conductor::{
     automation::effective_value as automation_effective, template::DeckSlot as TplDeckSlot,
     AutomationMode, AutomationModeKind, BuiltInTarget, Template, TemplateRunner,
 };
 use crossbeam::channel::{self, Sender};
-use serde::Serialize;
-use tracing::{error, info, warn};
+use serde::{Deserialize, Serialize};
+use tracing::warn;
+
+mod host;
+use host::{Envelope, Host};
 
 /// UI から audio スレッドに送るコマンド。
 #[derive(Debug)]
 pub enum AudioCommand {
-    Load { deck: DeckId, path: PathBuf },
+    Load {
+        deck: DeckId,
+        path: PathBuf,
+    },
     Play(DeckId),
     Pause(DeckId),
     Stop(DeckId),
-    Seek { deck: DeckId, position_sec: f64 },
+    Seek {
+        deck: DeckId,
+        position_sec: f64,
+    },
     SetCrossfader(f32),
-    SetChannelVolume { deck: DeckId, volume: f32 },
+    SetChannelVolume {
+        deck: DeckId,
+        volume: f32,
+    },
     SetMasterVolume(f32),
-    SetTempoAdjust { deck: DeckId, adjust: f32 },
-    SetTempoRange { deck: DeckId, range: TempoRange },
-    LoopIn { deck: DeckId, position_sec: f64 },
-    LoopOut { deck: DeckId, position_sec: f64 },
+    SetTempoAdjust {
+        deck: DeckId,
+        adjust: f32,
+    },
+    SetTempoRange {
+        deck: DeckId,
+        range: TempoRange,
+    },
+    LoopIn {
+        deck: DeckId,
+        position_sec: f64,
+    },
+    LoopOut {
+        deck: DeckId,
+        position_sec: f64,
+    },
     LoopToggle(DeckId),
     LoopClear(DeckId),
-    SetEqLow { deck: DeckId, db: f32 },
-    SetEqMid { deck: DeckId, db: f32 },
-    SetEqHigh { deck: DeckId, db: f32 },
-    SetFilter { deck: DeckId, value: f32 },
-    SetEcho { deck: DeckId, wet: f32, time_ms: f32, feedback: f32 },
-    SetReverb { deck: DeckId, wet: f32, room: f32 },
-    SetCueSend { deck: DeckId, value: f32 },
-    SetKeyLock { deck: DeckId, on: bool },
-    SetPitchOffset { deck: DeckId, semitones: f32 },
-    StartTemplate { template: Template, bpm: f32 },
+    SetEqLow {
+        deck: DeckId,
+        db: f32,
+    },
+    SetEqMid {
+        deck: DeckId,
+        db: f32,
+    },
+    SetEqHigh {
+        deck: DeckId,
+        db: f32,
+    },
+    SetFilter {
+        deck: DeckId,
+        value: f32,
+    },
+    SetEcho {
+        deck: DeckId,
+        wet: f32,
+        time_ms: f32,
+        feedback: f32,
+    },
+    SetReverb {
+        deck: DeckId,
+        wet: f32,
+        room: f32,
+    },
+    SetCueSend {
+        deck: DeckId,
+        value: f32,
+    },
+    SetKeyLock {
+        deck: DeckId,
+        on: bool,
+    },
+    SetPitchOffset {
+        deck: DeckId,
+        semitones: f32,
+    },
+    StartTemplate {
+        template: Template,
+        bpm: f32,
+    },
     AbortTemplate,
-    OverrideParam { target: BuiltInTarget },
-    ResumeParam { target: BuiltInTarget, duration_beats: f64 },
-    CommitParam { target: BuiltInTarget },
+    OverrideParam {
+        target: BuiltInTarget,
+    },
+    ResumeParam {
+        target: BuiltInTarget,
+        duration_beats: f64,
+    },
+    CommitParam {
+        target: BuiltInTarget,
+    },
+    LoadWithMetadata {
+        deck: DeckId,
+        path: PathBuf,
+        metadata: TrackMetadata,
+    },
+    SetTrackMetadata {
+        deck: DeckId,
+        metadata: TrackMetadata,
+    },
+    RefreshTrackMetadata {
+        deck: DeckId,
+        path: PathBuf,
+        load_generation: u64,
+        metadata: TrackMetadata,
+    },
+    ConfigureAudio(AudioOutputConfig),
+    CuePress(DeckId),
+    CueRelease(DeckId),
+    SetTransportCue {
+        deck: DeckId,
+        position_sec: f64,
+    },
+    JogTouch {
+        deck: DeckId,
+        touched: bool,
+    },
+    Jog {
+        deck: DeckId,
+        delta_sec: f64,
+    },
+    Nudge {
+        deck: DeckId,
+        value: f32,
+    },
+    HotCue {
+        deck: DeckId,
+        slot: u8,
+        set: bool,
+    },
+    SetSync {
+        deck: DeckId,
+        enabled: bool,
+        source: String,
+    },
+    UpdateLinkClock {
+        bpm: f32,
+        beat_phase: f64,
+        connected: bool,
+    },
+    SetMasterDeck {
+        deck: DeckId,
+    },
+    SetSyncLatency {
+        milliseconds: f64,
+    },
+    SetHeadphoneMix(f32),
+    SetHeadphoneVolume(f32),
+    ReleaseControls,
+}
+
+/// Analysis metadata is injected by the library service, never queried by audio.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(default)]
+pub struct TrackMetadata {
+    pub track_id: Option<String>,
+    pub bpm: Option<f32>,
+    pub beats: Vec<f64>,
+    pub hot_cues: Vec<Option<f64>>,
 }
 
 /// UI が読む 1 デッキ分のスナップショット。
@@ -82,6 +214,22 @@ pub struct DeckSnapshot {
     pub has_cue_output: bool,
     pub key_lock: bool,
     pub pitch_offset_semitones: f32,
+    pub track_id: Option<String>,
+    pub loading: bool,
+    pub load_generation: u64,
+    pub load_error: Option<String>,
+    pub bpm: Option<f32>,
+    pub original_bpm: Option<f32>,
+    pub beat_position: Option<f64>,
+    pub beat_phase: Option<f64>,
+    pub hot_cues: Vec<Option<f64>>,
+    pub transport_cue_sec: f64,
+    pub cue_pressed: bool,
+    pub jog_touched: bool,
+    pub nudge: f32,
+    pub sync_enabled: bool,
+    pub sync_source: Option<String>,
+    pub sync_lost: bool,
 }
 
 /// Mixer 全体のスナップショット。
@@ -93,6 +241,13 @@ pub struct MixerSnapshot {
     pub deck_b: DeckSnapshot,
     /// 実行中テンプレートの状態。`None` なら非実行。
     pub template: Option<TemplateStatus>,
+    #[schema(value_type = Object)]
+    pub audio: AudioOutputStatus,
+    #[schema(value_type = Object)]
+    pub audio_config: AudioOutputConfig,
+    pub headphone_mix: f32,
+    pub headphone_volume: f32,
+    pub output_error: Option<String>,
 }
 
 /// 実行中テンプレートの UI 向けステータス。
@@ -119,14 +274,17 @@ pub struct AutomationModeEntry {
 /// UI 側が保持するハンドル。
 #[derive(Clone)]
 pub struct AudioHandle {
-    tx: Sender<AudioCommand>,
+    tx: Sender<Envelope>,
     snapshot: Arc<ArcSwap<MixerSnapshot>>,
 }
 
 impl AudioHandle {
     pub fn send(&self, cmd: AudioCommand) -> anyhow::Result<()> {
         self.tx
-            .send(cmd)
+            .send(Envelope {
+                command: cmd,
+                reply: None,
+            })
             .map_err(|e| anyhow::anyhow!("audio command channel closed: {e}"))
     }
 
@@ -135,242 +293,90 @@ impl AudioHandle {
     }
 }
 
-/// audio スレッドを起動してハンドルを返す。
-///
-/// `main_device_name` で Main 出力デバイスを指定する。`None` ならデフォルト。
-/// `cue_device_name` で Cue 出力デバイスを指定する。`None` で Cue 出力なし。
-/// 名前指定でオープンに失敗した場合は warning を出してフォールバック（Main は
-/// デフォルトデバイス、Cue は無効）。
+/// Starts the CPAL host. Device errors remain visible and recoverable through configuration.
 pub fn spawn(
     main_device_name: Option<String>,
     cue_device_name: Option<String>,
 ) -> anyhow::Result<AudioHandle> {
-    let (tx, rx) = channel::unbounded::<AudioCommand>();
-    let initial = empty_snapshot();
-    let snapshot = Arc::new(ArcSwap::from_pointee(initial));
+    spawn_with_config(AudioOutputConfig {
+        device_name: main_device_name,
+        cue_device_name,
+        ..Default::default()
+    })
+}
+
+pub fn spawn_with_config(config: AudioOutputConfig) -> anyhow::Result<AudioHandle> {
+    let (tx, rx) = channel::unbounded::<Envelope>();
+    let snapshot = Arc::new(ArcSwap::from_pointee(empty_snapshot()));
     let snapshot_worker = snapshot.clone();
-
-    let (ready_tx, ready_rx) = channel::bounded::<anyhow::Result<()>>(1);
-
+    let (ready_tx, ready_rx) = channel::bounded(1);
     thread::Builder::new()
         .name("audio-engine".into())
         .spawn(move || {
-            let device = match open_main_device(main_device_name.as_deref()) {
-                Ok(d) => d,
-                Err(e) => {
-                    let _ = ready_tx.send(Err(e));
-                    return;
-                }
-            };
-            let cue_device = open_cue_device(cue_device_name.as_deref());
-            let mut mixer = match Mixer::new(&device, cue_device.as_ref()) {
-                Ok(m) => m,
-                Err(e) => {
-                    let _ = ready_tx.send(Err(e.into()));
-                    return;
-                }
-            };
-            let _ = ready_tx.send(Ok(()));
-            info!("audio engine thread started");
-
-            let mut deck_paths: [Option<PathBuf>; 2] = [None, None];
-            let mut template_runner: Option<TemplateRunner> = None;
-            let mut automation: HashMap<BuiltInTarget, AutomationMode> = HashMap::new();
-
+            let mut host = Host::new(config);
+            snapshot_worker.store(Arc::new(host.snapshot()));
+            let _ = ready_tx.send(());
             loop {
-                while let Ok(cmd) = rx.try_recv() {
-                    apply_command(
-                        &device,
-                        cue_device.as_ref(),
-                        &mut mixer,
-                        &mut deck_paths,
-                        &mut template_runner,
-                        &mut automation,
-                        cmd,
-                    );
+                match rx.recv_timeout(Duration::from_millis(10)) {
+                    Ok(envelope) => host.receive(envelope, &snapshot_worker),
+                    Err(channel::RecvTimeoutError::Disconnected) => break,
+                    Err(channel::RecvTimeoutError::Timeout) => {}
                 }
-
-                // テンプレート進行
-                if let Some(runner) = &template_runner {
-                    let current_beats = runner.elapsed_beats();
-                    for (target, value) in runner.evaluate_now() {
-                        let mode =
-                            automation.entry(target).or_insert(AutomationMode::Automated);
-                        if let Some(eff) = automation_effective(mode, value, current_beats) {
-                            apply_template_value(&mut mixer, target, eff);
-                        }
-                    }
-                    if runner.is_done() {
-                        info!(name = %runner.template().name, "template completed");
-                        template_runner = None;
-                        // 終了時は全 mode を Idle に戻す
-                        for v in automation.values_mut() {
-                            *v = AutomationMode::Idle;
-                        }
-                    }
+                while let Ok(envelope) = rx.try_recv() {
+                    host.receive(envelope, &snapshot_worker);
                 }
-
-                // 各デッキのループ判定。end 到達なら start にシークする。
-                if let Err(e) = mixer.deck_a().process_loop() {
-                    error!(?e, "loop process failed (deck A)");
-                }
-                if let Err(e) = mixer.deck_b().process_loop() {
-                    error!(?e, "loop process failed (deck B)");
-                }
-                let snap = build_snapshot(
-                    &mut mixer,
-                    &deck_paths,
-                    template_runner.as_ref(),
-                    &automation,
-                );
-                snapshot_worker.store(Arc::new(snap));
-
-                // 50Hz（20ms）で snapshot 更新。UI の polling は 100ms 程度想定。
-                thread::sleep(Duration::from_millis(20));
+                host.tick(&snapshot_worker);
             }
         })?;
-
     ready_rx
         .recv()
-        .map_err(|_| anyhow::anyhow!("audio engine failed to initialize"))??;
-
+        .map_err(|_| anyhow::anyhow!("audio engine failed to initialize"))?;
     Ok(AudioHandle { tx, snapshot })
 }
 
-fn apply_command(
-    device: &OutputDevice,
-    cue_device: Option<&OutputDevice>,
-    mixer: &mut Mixer,
-    paths: &mut [Option<PathBuf>; 2],
-    template_runner: &mut Option<TemplateRunner>,
-    automation: &mut HashMap<BuiltInTarget, AutomationMode>,
-    cmd: AudioCommand,
-) {
-    match cmd {
-        AudioCommand::Load { deck, path } => {
-            match mixer.deck(deck).load(device, cue_device, &path) {
-                Ok(()) => paths[deck_idx(deck)] = Some(path),
-                Err(e) => {
-                    error!(?e, ?deck, "load failed");
-                    paths[deck_idx(deck)] = None;
-                }
-            }
+impl AudioHandle {
+    /// Acknowledges the applied command, including actual decode/configuration errors.
+    pub fn execute(
+        &self,
+        command: AudioCommand,
+    ) -> impl std::future::Future<Output = anyhow::Result<()>> + Send {
+        let (reply, response) = channel::bounded(1);
+        let queued = self
+            .tx
+            .send(Envelope {
+                command,
+                reply: Some(reply),
+            })
+            .map_err(|_| anyhow::anyhow!("audio command channel closed"));
+        async move {
+            queued?;
+            tokio::task::spawn_blocking(move || response.recv())
+                .await?
+                .map_err(|_| anyhow::anyhow!("audio command acknowledgement channel closed"))?
+                .map_err(anyhow::Error::msg)
         }
-        AudioCommand::Play(deck) => mixer.deck(deck).play(),
-        AudioCommand::Pause(deck) => mixer.deck(deck).pause(),
-        AudioCommand::Stop(deck) => mixer.deck(deck).stop(),
-        AudioCommand::Seek { deck, position_sec } => {
-            let pos = if position_sec.is_finite() && position_sec >= 0.0 {
-                std::time::Duration::from_secs_f64(position_sec)
-            } else {
-                std::time::Duration::ZERO
-            };
-            if let Err(e) = mixer.deck(deck).seek(pos) {
-                error!(?e, ?deck, "seek failed");
-            }
-        }
-        AudioCommand::SetCrossfader(v) => mixer.set_crossfader(v),
-        AudioCommand::SetChannelVolume { deck, volume } => {
-            mixer.set_channel_volume(deck, volume);
-        }
-        AudioCommand::SetMasterVolume(v) => mixer.set_master_volume(v),
-        AudioCommand::SetTempoAdjust { deck, adjust } => {
-            mixer.deck(deck).set_tempo_adjust(adjust);
-        }
-        AudioCommand::SetTempoRange { deck, range } => {
-            mixer.deck(deck).set_tempo_range(range);
-        }
-        AudioCommand::LoopIn { deck, position_sec } => {
-            mixer.deck(deck).set_loop_in(position_sec);
-        }
-        AudioCommand::LoopOut { deck, position_sec } => {
-            mixer.deck(deck).set_loop_out(position_sec);
-        }
-        AudioCommand::LoopToggle(deck) => {
-            mixer.deck(deck).toggle_loop();
-        }
-        AudioCommand::LoopClear(deck) => {
-            mixer.deck(deck).clear_loop();
-        }
-        AudioCommand::SetEqLow { deck, db } => {
-            mixer.deck(deck).dsp_params().set_eq_low_db(db);
-        }
-        AudioCommand::SetEqMid { deck, db } => {
-            mixer.deck(deck).dsp_params().set_eq_mid_db(db);
-        }
-        AudioCommand::SetEqHigh { deck, db } => {
-            mixer.deck(deck).dsp_params().set_eq_high_db(db);
-        }
-        AudioCommand::SetFilter { deck, value } => {
-            mixer.deck(deck).dsp_params().set_filter(value);
-        }
-        AudioCommand::SetEcho { deck, wet, time_ms, feedback } => {
-            let p = mixer.deck(deck).dsp_params();
-            p.set_echo_wet(wet);
-            p.set_echo_time_ms(time_ms);
-            p.set_echo_feedback(feedback);
-        }
-        AudioCommand::SetReverb { deck, wet, room } => {
-            let p = mixer.deck(deck).dsp_params();
-            p.set_reverb_wet(wet);
-            p.set_reverb_room(room);
-        }
-        AudioCommand::SetCueSend { deck, value } => {
-            mixer.set_cue_send(deck, value);
-        }
-        AudioCommand::SetKeyLock { deck, on } => {
-            mixer.deck(deck).set_key_lock(on);
-        }
-        AudioCommand::SetPitchOffset { deck, semitones } => {
-            mixer.deck(deck).set_pitch_offset_semitones(semitones);
-        }
-        AudioCommand::StartTemplate { template, bpm } => {
-            info!(
-                name = %template.name,
-                duration_beats = template.duration_beats,
-                bpm,
-                "template started"
-            );
-            // 全 track を Automated 化。既存の Idle/Overridden/Committed を上書き。
-            for track in &template.tracks {
-                automation.insert(track.target, AutomationMode::Automated);
-            }
-            *template_runner = Some(TemplateRunner::new(template, bpm));
-        }
-        AudioCommand::AbortTemplate => {
-            if let Some(r) = template_runner.take() {
-                info!(name = %r.template().name, "template aborted");
-            }
-            for v in automation.values_mut() {
-                *v = AutomationMode::Idle;
-            }
-        }
-        AudioCommand::OverrideParam { target } => {
-            automation.insert(target, AutomationMode::Overridden);
-        }
-        AudioCommand::ResumeParam {
-            target,
-            duration_beats,
-        } => {
-            // resume 時の起点 beat と current value を runner から取り出す。
-            let from_value = current_mixer_value(mixer, target);
-            let started = template_runner
-                .as_ref()
-                .map(|r| r.elapsed_beats())
-                .unwrap_or(0.0);
-            automation.insert(
-                target,
-                AutomationMode::Resuming {
-                    from_value,
-                    started_at_beats: started,
-                    duration_beats: duration_beats.max(0.25),
-                },
-            );
-        }
-        AudioCommand::CommitParam { target } => {
-            let fixed_value = current_mixer_value(mixer, target);
-            automation.insert(target, AutomationMode::Committed { fixed_value });
-        }
+    }
+
+    pub async fn load_track(
+        &self,
+        deck: DeckId,
+        path: PathBuf,
+        metadata: TrackMetadata,
+    ) -> anyhow::Result<()> {
+        self.execute(AudioCommand::LoadWithMetadata {
+            deck,
+            path,
+            metadata,
+        })
+        .await
+    }
+
+    pub async fn configure_audio(&self, config: AudioOutputConfig) -> anyhow::Result<()> {
+        self.execute(AudioCommand::ConfigureAudio(config)).await
+    }
+
+    pub fn audio_status(&self) -> AudioOutputStatus {
+        self.snapshot().audio
     }
 }
 
@@ -385,21 +391,11 @@ fn current_mixer_value(mixer: &mut Mixer, target: BuiltInTarget) -> f32 {
         BuiltInTarget::Crossfader => mixer.crossfader(),
         BuiltInTarget::MasterVolume => mixer.master_volume(),
         BuiltInTarget::DeckVolume { deck } => mixer.deck(to_deck(deck)).channel_volume(),
-        BuiltInTarget::DeckEqLow { deck } => {
-            mixer.deck(to_deck(deck)).dsp_params().eq_low_db()
-        }
-        BuiltInTarget::DeckEqMid { deck } => {
-            mixer.deck(to_deck(deck)).dsp_params().eq_mid_db()
-        }
-        BuiltInTarget::DeckEqHigh { deck } => {
-            mixer.deck(to_deck(deck)).dsp_params().eq_high_db()
-        }
-        BuiltInTarget::DeckFilter { deck } => {
-            mixer.deck(to_deck(deck)).dsp_params().filter()
-        }
-        BuiltInTarget::DeckEchoWet { deck } => {
-            mixer.deck(to_deck(deck)).dsp_params().echo_wet()
-        }
+        BuiltInTarget::DeckEqLow { deck } => mixer.deck(to_deck(deck)).dsp_params().eq_low_db(),
+        BuiltInTarget::DeckEqMid { deck } => mixer.deck(to_deck(deck)).dsp_params().eq_mid_db(),
+        BuiltInTarget::DeckEqHigh { deck } => mixer.deck(to_deck(deck)).dsp_params().eq_high_db(),
+        BuiltInTarget::DeckFilter { deck } => mixer.deck(to_deck(deck)).dsp_params().filter(),
+        BuiltInTarget::DeckEchoWet { deck } => mixer.deck(to_deck(deck)).dsp_params().echo_wet(),
         BuiltInTarget::DeckReverbWet { deck } => {
             mixer.deck(to_deck(deck)).dsp_params().reverb_wet()
         }
@@ -489,6 +485,11 @@ fn build_snapshot(
         deck_a: build_deck_snapshot(mixer, DeckId::A, paths[0].as_ref()),
         deck_b: build_deck_snapshot(mixer, DeckId::B, paths[1].as_ref()),
         template: template_status,
+        audio: AudioOutputStatus::default(),
+        audio_config: AudioOutputConfig::default(),
+        headphone_mix: mixer.headphone_mix(),
+        headphone_volume: mixer.headphone_volume(),
+        output_error: None,
     }
 }
 
@@ -526,7 +527,9 @@ pub fn key_to_target(key: &str) -> Result<BuiltInTarget, String> {
     if key == "master_volume" {
         return Ok(BuiltInTarget::MasterVolume);
     }
-    let (head, tail) = key.split_once('.').ok_or_else(|| format!("invalid target key: {key}"))?;
+    let (head, tail) = key
+        .split_once('.')
+        .ok_or_else(|| format!("invalid target key: {key}"))?;
     let deck = slot(tail)?;
     match head {
         "deck_volume" => Ok(BuiltInTarget::DeckVolume { deck }),
@@ -540,11 +543,7 @@ pub fn key_to_target(key: &str) -> Result<BuiltInTarget, String> {
     }
 }
 
-fn build_deck_snapshot(
-    mixer: &mut Mixer,
-    id: DeckId,
-    path: Option<&PathBuf>,
-) -> DeckSnapshot {
+fn build_deck_snapshot(mixer: &mut Mixer, id: DeckId, path: Option<&PathBuf>) -> DeckSnapshot {
     let state = deck_state(mixer, id);
     let deck = mixer.deck(id);
     let loop_state = deck.loop_state();
@@ -576,6 +575,8 @@ fn build_deck_snapshot(
         has_cue_output: deck.has_cue_output(),
         key_lock: deck.key_lock(),
         pitch_offset_semitones: deck.pitch_offset_semitones(),
+        transport_cue_sec: deck.transport_cue(),
+        ..empty_deck_snapshot(deck_label(id))
     }
 }
 
@@ -599,32 +600,6 @@ fn deck_label(id: DeckId) -> &'static str {
     }
 }
 
-fn open_main_device(name: Option<&str>) -> anyhow::Result<OutputDevice> {
-    if let Some(n) = name {
-        match OutputDevice::open_by_name(n) {
-            Ok(d) => return Ok(d),
-            Err(e) => {
-                warn!(device = %n, error = %e, "failed to open named device, falling back to default");
-            }
-        }
-    }
-    Ok(OutputDevice::open_default()?)
-}
-
-fn open_cue_device(name: Option<&str>) -> Option<OutputDevice> {
-    let n = name?;
-    match OutputDevice::open_by_name(n) {
-        Ok(d) => {
-            info!(device = %d.name(), "cue output device opened");
-            Some(d)
-        }
-        Err(e) => {
-            warn!(device = %n, error = %e, "failed to open cue device, disabling Cue output");
-            None
-        }
-    }
-}
-
 fn empty_snapshot() -> MixerSnapshot {
     MixerSnapshot {
         crossfader: 0.0,
@@ -632,6 +607,11 @@ fn empty_snapshot() -> MixerSnapshot {
         deck_a: empty_deck_snapshot("A"),
         deck_b: empty_deck_snapshot("B"),
         template: None,
+        audio: AudioOutputStatus::default(),
+        audio_config: AudioOutputConfig::default(),
+        headphone_mix: 0.0,
+        headphone_volume: 1.0,
+        output_error: None,
     }
 }
 
@@ -663,6 +643,22 @@ fn empty_deck_snapshot(id: &'static str) -> DeckSnapshot {
         has_cue_output: false,
         key_lock: false,
         pitch_offset_semitones: 0.0,
+        track_id: None,
+        loading: false,
+        load_generation: 0,
+        load_error: None,
+        bpm: None,
+        original_bpm: None,
+        beat_position: None,
+        beat_phase: None,
+        hot_cues: vec![None; 8],
+        transport_cue_sec: 0.0,
+        cue_pressed: false,
+        jog_touched: false,
+        nudge: 0.0,
+        sync_enabled: false,
+        sync_source: None,
+        sync_lost: false,
     }
 }
 
@@ -685,5 +681,45 @@ pub fn parse_tempo_range(percent: u8) -> Result<TempoRange, String> {
         10 => Ok(TempoRange::Ten),
         16 => Ok(TempoRange::Sixteen),
         other => Err(format!("invalid tempo range: {other}% (expected 6/10/16)")),
+    }
+}
+
+#[cfg(test)]
+mod acknowledgement_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn commands_keep_enqueue_order_when_acknowledgements_are_awaited_in_reverse() {
+        let (tx, rx) = channel::unbounded();
+        let audio = AudioHandle {
+            tx,
+            snapshot: Arc::new(ArcSwap::from_pointee(empty_snapshot())),
+        };
+        // These futures deliberately remain unpolled while their requests enter
+        // the host queue; decoding can finish independently of MIDI dispatch.
+        let first = audio.execute(AudioCommand::Play(DeckId::A));
+        let second = audio.execute(AudioCommand::Pause(DeckId::A));
+        let first_request = rx
+            .try_recv()
+            .expect("first command must already be enqueued");
+        let second_request = rx
+            .try_recv()
+            .expect("second command must already be enqueued");
+        assert!(matches!(
+            first_request.command,
+            AudioCommand::Play(DeckId::A)
+        ));
+        assert!(matches!(
+            second_request.command,
+            AudioCommand::Pause(DeckId::A)
+        ));
+        first_request
+            .reply
+            .unwrap()
+            .send(Err("first failed".into()))
+            .unwrap();
+        second_request.reply.unwrap().send(Ok(())).unwrap();
+        second.await.unwrap();
+        assert_eq!(first.await.unwrap_err().to_string(), "first failed");
     }
 }

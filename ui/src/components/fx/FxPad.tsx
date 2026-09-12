@@ -12,6 +12,7 @@ interface FxPadProps {
   mixerStatus: MixerSnapshot | null;
   focusedTarget: string;
   onFocus: (key: string) => void;
+  externalMixer?: boolean;
 }
 
 function lookupMode(
@@ -34,6 +35,7 @@ export function FxPad({
   mixerStatus,
   focusedTarget,
   onFocus,
+  externalMixer = false,
 }: FxPadProps) {
   const isKill = (db: number) => db <= KILL_DB + 0.5;
 
@@ -49,9 +51,13 @@ export function FxPad({
   return (
     <div className="fx-pad" data-deck={deckId} aria-label={`Effects for Deck ${deckId}`}>
       <div className="fx-section">
-        <div className="fx-section-title">EQ</div>
+        <div className="fx-section-title" title={externalMixer ? "External mode bypasses software EQ. Use the DJM mixer; deck effects remain active." : undefined}>
+          {externalMixer ? "EQ · EXTERNAL BYPASS" : "EQ"}
+        </div>
         <EqRow
           label="HI"
+          ariaLabel={`Deck ${deckId} EQ high`}
+          disabled={externalMixer}
           value={snapshot.eq_high_db}
           onChange={(v) => handleEq("high", v)}
           isKill={isKill(snapshot.eq_high_db)}
@@ -63,6 +69,8 @@ export function FxPad({
         />
         <EqRow
           label="MID"
+          ariaLabel={`Deck ${deckId} EQ mid`}
+          disabled={externalMixer}
           value={snapshot.eq_mid_db}
           onChange={(v) => handleEq("mid", v)}
           isKill={isKill(snapshot.eq_mid_db)}
@@ -74,6 +82,8 @@ export function FxPad({
         />
         <EqRow
           label="LOW"
+          ariaLabel={`Deck ${deckId} EQ low`}
+          disabled={externalMixer}
           value={snapshot.eq_low_db}
           onChange={(v) => handleEq("low", v)}
           isKill={isKill(snapshot.eq_low_db)}
@@ -92,10 +102,14 @@ export function FxPad({
         data-focused={focusedTarget === filterKey}
         onClick={() => onFocus(filterKey)}
       >
-        <div className="fx-section-title">FILTER</div>
+        <div className="fx-section-title" title={externalMixer ? "External mode bypasses the software filter. Use the DJM mixer; deck effects remain active." : undefined}>
+          {externalMixer ? "FILTER · EXTERNAL BYPASS" : "FILTER"}
+        </div>
         <div className="fx-knob-row">
           <input
             type="range"
+            aria-label={`Deck ${deckId} filter`}
+            disabled={externalMixer}
             min={-1}
             max={1}
             step={0.01}
@@ -105,6 +119,8 @@ export function FxPad({
           <button
             className="fx-mini-btn"
             title="Reset filter"
+            aria-label={`Deck ${deckId} reset filter`}
+            disabled={externalMixer}
             onClick={(e) => {
               e.stopPropagation();
               void ipc.setFilter(deckId, 0);
@@ -124,6 +140,7 @@ export function FxPad({
         <div className="fx-section-title">ECHO</div>
         <FxEffectRow
           label="wet"
+          ariaLabel={`Deck ${deckId} echo wet`}
           value={snapshot.echo_wet}
           min={0}
           max={1}
@@ -135,6 +152,7 @@ export function FxPad({
         />
         <FxEffectRow
           label="time"
+          ariaLabel={`Deck ${deckId} echo time`}
           value={snapshot.echo_time_ms}
           min={50}
           max={1500}
@@ -146,6 +164,7 @@ export function FxPad({
         />
         <FxEffectRow
           label="fb"
+          ariaLabel={`Deck ${deckId} echo feedback`}
           value={snapshot.echo_feedback}
           min={0}
           max={0.92}
@@ -161,6 +180,7 @@ export function FxPad({
         <div className="fx-section-title">REVERB</div>
         <FxEffectRow
           label="wet"
+          ariaLabel={`Deck ${deckId} reverb wet`}
           value={snapshot.reverb_wet}
           min={0}
           max={1}
@@ -170,6 +190,7 @@ export function FxPad({
         />
         <FxEffectRow
           label="room"
+          ariaLabel={`Deck ${deckId} reverb room`}
           value={snapshot.reverb_room}
           min={0}
           max={1}
@@ -184,6 +205,8 @@ export function FxPad({
 
 function EqRow({
   label,
+  ariaLabel,
+  disabled,
   value,
   onChange,
   isKill,
@@ -194,6 +217,8 @@ function EqRow({
   onFocus,
 }: {
   label: string;
+  ariaLabel: string;
+  disabled: boolean;
   value: number;
   onChange: (db: number) => void;
   isKill: boolean;
@@ -214,6 +239,8 @@ function EqRow({
       <span className="fx-row-label">{label}</span>
       <input
         type="range"
+        aria-label={ariaLabel}
+        disabled={disabled}
         min={MIN_DB}
         max={MAX_DB}
         step={0.5}
@@ -225,6 +252,9 @@ function EqRow({
         className="eq-kill"
         data-active={isKill || undefined}
         title="Kill (silence this band)"
+        aria-label={`${ariaLabel} kill`}
+        aria-pressed={isKill}
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
           onKill();
@@ -238,6 +268,7 @@ function EqRow({
 
 function FxEffectRow({
   label,
+  ariaLabel,
   value,
   min,
   max,
@@ -246,6 +277,7 @@ function FxEffectRow({
   onChange,
 }: {
   label: string;
+  ariaLabel: string;
   value: number;
   min: number;
   max: number;
@@ -258,6 +290,7 @@ function FxEffectRow({
       <span className="fx-row-label">{label}</span>
       <input
         type="range"
+        aria-label={ariaLabel}
         min={min}
         max={max}
         step={step}
