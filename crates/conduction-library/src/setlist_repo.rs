@@ -7,8 +7,7 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use conduction_core::{
-    CueId, Setlist, SetlistEntry, SetlistEntryId, SetlistId, TempoMode, TrackId,
-    TransitionSpec,
+    CueId, Setlist, SetlistEntry, SetlistEntryId, SetlistId, TempoMode, TrackId, TransitionSpec,
 };
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
@@ -114,9 +113,7 @@ impl Library {
 
     pub fn list_setlists(&self) -> LibraryResult<Vec<Setlist>> {
         let conn = self.raw_conn();
-        let mut stmt = conn.prepare(
-            "SELECT id, name FROM setlists ORDER BY created_at ASC",
-        )?;
+        let mut stmt = conn.prepare("SELECT id, name FROM setlists ORDER BY created_at ASC")?;
         let rows = stmt
             .query_map([], |row| {
                 let id_str: String = row.get(0)?;
@@ -189,9 +186,8 @@ impl Library {
                 "setlist not found: {id}"
             )));
         }
-        self.get_setlist(id)?.ok_or_else(|| {
-            LibraryError::Unsupported(format!("setlist disappeared: {id}"))
-        })
+        self.get_setlist(id)?
+            .ok_or_else(|| LibraryError::Unsupported(format!("setlist disappeared: {id}")))
     }
 
     pub fn add_setlist_entry(
@@ -295,9 +291,7 @@ impl Library {
         let from = entry_ids
             .iter()
             .position(|s| s == &entry_id.as_uuid().to_string())
-            .ok_or_else(|| {
-                LibraryError::Unsupported(format!("entry not found: {entry_id}"))
-            })?;
+            .ok_or_else(|| LibraryError::Unsupported(format!("entry not found: {entry_id}")))?;
         let max = entry_ids.len().saturating_sub(1) as i64;
         let to = new_index.clamp(0, max) as usize;
         let item = entry_ids.remove(from);
@@ -314,9 +308,8 @@ impl Library {
             params![id.as_uuid().to_string(), now],
         )?;
         tx.commit()?;
-        self.get_setlist(id)?.ok_or_else(|| {
-            LibraryError::Unsupported(format!("setlist disappeared: {id}"))
-        })
+        self.get_setlist(id)?
+            .ok_or_else(|| LibraryError::Unsupported(format!("setlist disappeared: {id}")))
     }
 
     pub fn set_setlist_transition(
@@ -469,7 +462,9 @@ impl Library {
         let mut entries = Vec::with_capacity(setlist.entries.len());
         for e in &setlist.entries {
             // track_id → track 解決。見つからなければ skip。
-            let Some(track) = self.get_track(e.track_id)? else { continue };
+            let Some(track) = self.get_track(e.track_id)? else {
+                continue;
+            };
             entries.push(CsetEntry {
                 track_meta: CsetTrackMeta {
                     path: track.path.to_string_lossy().into_owned(),
@@ -495,8 +490,8 @@ impl Library {
                 entries,
             },
         };
-        Ok(serde_json::to_string_pretty(&env)
-            .map_err(|e| LibraryError::Unsupported(format!("json serialize: {e}")))?)
+        serde_json::to_string_pretty(&env)
+            .map_err(|e| LibraryError::Unsupported(format!("json serialize: {e}")))
     }
 
     /// `.cset` JSON を読み、新しい setlist を作成する。
@@ -520,16 +515,12 @@ impl Library {
     ) -> LibraryResult<SetlistImportReport> {
         // index を 1 度だけ構築 (path 完全一致 / (title, artist) fuzzy 一致)。
         let all_tracks = self.list_tracks()?;
-        let mut by_path: HashMap<String, TrackId> =
-            HashMap::with_capacity(all_tracks.len());
+        let mut by_path: HashMap<String, TrackId> = HashMap::with_capacity(all_tracks.len());
         let mut by_title_artist: HashMap<(String, String), TrackId> =
             HashMap::with_capacity(all_tracks.len());
         for t in &all_tracks {
             by_path.insert(t.path.to_string_lossy().into_owned(), t.id);
-            by_title_artist.insert(
-                (t.title.to_lowercase(), t.artist.to_lowercase()),
-                t.id,
-            );
+            by_title_artist.insert((t.title.to_lowercase(), t.artist.to_lowercase()), t.id);
         }
         let resolve = |meta: &CsetTrackMeta| -> Option<TrackId> {
             if let Some(id) = by_path.get(&meta.path) {
@@ -749,9 +740,7 @@ mod tests {
         assert_eq!(tx.tempo_mode, TempoMode::MatchTarget);
 
         // クリア
-        let cleared = lib
-            .set_setlist_transition(s.id, e1.id, None)
-            .unwrap();
+        let cleared = lib.set_setlist_transition(s.id, e1.id, None).unwrap();
         assert!(cleared.transition_to_next.is_none());
     }
 
@@ -778,14 +767,11 @@ mod tests {
         lib.insert_track(&t1).unwrap();
         lib.insert_track(&t2).unwrap();
         let key = Key::new(8, KeyMode::Minor).unwrap();
-        let exit_cue = conduction_core::Cue::new(
-            t1.id, 64.0, CueType::Drop, 120.0, key, 0.7, 32,
-        )
-        .unwrap();
-        let entry_cue = conduction_core::Cue::new(
-            t2.id, 0.0, CueType::IntroStart, 120.0, key, 0.4, 16,
-        )
-        .unwrap();
+        let exit_cue =
+            conduction_core::Cue::new(t1.id, 64.0, CueType::Drop, 120.0, key, 0.7, 32).unwrap();
+        let entry_cue =
+            conduction_core::Cue::new(t2.id, 0.0, CueType::IntroStart, 120.0, key, 0.4, 16)
+                .unwrap();
         lib.insert_cue(&exit_cue).unwrap();
         lib.insert_cue(&entry_cue).unwrap();
 

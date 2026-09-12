@@ -20,17 +20,14 @@ fn fixture(name: &str) -> String {
 }
 
 fn roundtrip(xml: &str) -> DjPlaylists {
-    let first: DjPlaylists =
-        quick_xml::de::from_str(xml).expect("first deserialize must succeed");
-    let serialized =
-        quick_xml::se::to_string(&first).expect("serialize must succeed");
-    let second: DjPlaylists = quick_xml::de::from_str(&serialized)
-        .unwrap_or_else(|e| {
-            panic!(
-                "second deserialize failed: {}\n--- serialized output:\n{}",
-                e, serialized
-            )
-        });
+    let first: DjPlaylists = quick_xml::de::from_str(xml).expect("first deserialize must succeed");
+    let serialized = quick_xml::se::to_string(&first).expect("serialize must succeed");
+    let second: DjPlaylists = quick_xml::de::from_str(&serialized).unwrap_or_else(|e| {
+        panic!(
+            "second deserialize failed: {}\n--- serialized output:\n{}",
+            e, serialized
+        )
+    });
     assert_eq!(first, second, "round-trip changed the model");
     second
 }
@@ -72,8 +69,7 @@ fn sample_fixture_roundtrips() {
         .filter(|n| *n >= 0)
         .collect();
     assert_eq!(hot_cues, vec![0, 1]);
-    let memory_cues: usize =
-        t1.position_marks.iter().filter(|m| m.num == -1).count();
+    let memory_cues: usize = t1.position_marks.iter().filter(|m| m.num == -1).count();
     assert_eq!(memory_cues, 1);
 
     // Track 2 — two TEMPO anchors (variable BPM)

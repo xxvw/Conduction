@@ -1,4 +1,5 @@
 // Rust 側の conduction-app::audio_engine::{DeckSnapshot, MixerSnapshot} と同じ形。
+import type { AudioOutputConfig, AudioOutputStatus } from "@/types/performance";
 
 export type DeckId = "A" | "B";
 
@@ -31,6 +32,22 @@ export interface DeckSnapshot {
   has_cue_output: boolean;
   key_lock: boolean;
   pitch_offset_semitones: number;
+  track_id: string | null;
+  loading: boolean;
+  load_generation: number;
+  load_error: string | null;
+  bpm: number | null;
+  original_bpm: number | null;
+  beat_position: number | null;
+  beat_phase: number | null;
+  hot_cues: (number | null)[];
+  transport_cue_sec: number;
+  cue_pressed: boolean;
+  jog_touched: boolean;
+  nudge: number;
+  sync_enabled: boolean;
+  sync_source: "local" | "link" | null;
+  sync_lost: boolean;
 }
 
 export type EqBand = "low" | "mid" | "high";
@@ -65,4 +82,9 @@ export interface MixerSnapshot {
   deck_a: DeckSnapshot;
   deck_b: DeckSnapshot;
   template: TemplateStatus | null;
+  audio: AudioOutputStatus;
+  audio_config: AudioOutputConfig;
+  headphone_mix: number;
+  headphone_volume: number;
+  output_error: string | null;
 }

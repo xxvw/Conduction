@@ -50,25 +50,53 @@ pub struct Track {
     pub kind: Option<String>,
     #[serde(rename = "@Size", default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
-    #[serde(rename = "@TotalTime", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@TotalTime",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub total_time: Option<u32>,
-    #[serde(rename = "@DiscNumber", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@DiscNumber",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub disc_number: Option<u32>,
-    #[serde(rename = "@TrackNumber", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@TrackNumber",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub track_number: Option<u32>,
     #[serde(rename = "@Year", default, skip_serializing_if = "Option::is_none")]
     pub year: Option<u32>,
-    #[serde(rename = "@AverageBpm", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@AverageBpm",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub average_bpm: Option<f64>,
-    #[serde(rename = "@DateAdded", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@DateAdded",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub date_added: Option<String>,
     #[serde(rename = "@BitRate", default, skip_serializing_if = "Option::is_none")]
     pub bit_rate: Option<u32>,
-    #[serde(rename = "@SampleRate", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@SampleRate",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub sample_rate: Option<u32>,
     #[serde(rename = "@Comments", default, skip_serializing_if = "Option::is_none")]
     pub comments: Option<String>,
-    #[serde(rename = "@PlayCount", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "@PlayCount",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub play_count: Option<u32>,
     #[serde(rename = "@Rating", default, skip_serializing_if = "Option::is_none")]
     pub rating: Option<u32>,
@@ -87,7 +115,11 @@ pub struct Track {
 
     #[serde(rename = "TEMPO", default, skip_serializing_if = "Vec::is_empty")]
     pub tempos: Vec<Tempo>,
-    #[serde(rename = "POSITION_MARK", default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        rename = "POSITION_MARK",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub position_marks: Vec<PositionMark>,
 }
 

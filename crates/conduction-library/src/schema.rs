@@ -1,70 +1,57 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::{LibraryError, LibraryResult};
 
 /// 現在のスキーマバージョン。マイグレーションを追加する際にインクリメント。
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
+pub const CURRENT_SCHEMA_VERSION: u32 = 6;
 
 /// スキーマメタテーブル + 全テーブルを作成する（バージョン判定 + マイグレーション）。
 pub fn initialize(conn: &Connection) -> LibraryResult<()> {
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA foreign_keys = ON;
-         CREATE TABLE IF NOT EXISTS schema_meta (
+    // Connection-level pragmas cannot be changed inside the migration transaction.
+    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_meta (
            id INTEGER PRIMARY KEY CHECK (id = 1),
            version INTEGER NOT NULL
          );",
     )?;
 
-    let current: Option<u32> = conn
-        .query_row(
-            "SELECT version FROM schema_meta WHERE id = 1",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
+    let current: Option<u32> = tx
+        .query_row("SELECT version FROM schema_meta WHERE id = 1", [], |row| {
+            row.get(0)
+        })
+        .optional()?;
 
-    match current {
-        Some(v) if v == CURRENT_SCHEMA_VERSION => Ok(()),
-        Some(1) => {
-            migrate_v1_to_v2(conn)?;
-            migrate_v2_to_v3(conn)?;
-            migrate_v3_to_v4(conn)?;
-            migrate_v4_to_v5(conn)?;
-            set_version(conn, CURRENT_SCHEMA_VERSION)?;
-            Ok(())
+    let mut version = match current {
+        Some(v) if (1..=CURRENT_SCHEMA_VERSION).contains(&v) => v,
+        Some(other) => {
+            return Err(LibraryError::Schema(format!(
+                "unexpected schema version {other} (expected {CURRENT_SCHEMA_VERSION})"
+            )));
         }
-        Some(2) => {
-            migrate_v2_to_v3(conn)?;
-            migrate_v3_to_v4(conn)?;
-            migrate_v4_to_v5(conn)?;
-            set_version(conn, CURRENT_SCHEMA_VERSION)?;
-            Ok(())
-        }
-        Some(3) => {
-            migrate_v3_to_v4(conn)?;
-            migrate_v4_to_v5(conn)?;
-            set_version(conn, CURRENT_SCHEMA_VERSION)?;
-            Ok(())
-        }
-        Some(4) => {
-            migrate_v4_to_v5(conn)?;
-            set_version(conn, CURRENT_SCHEMA_VERSION)?;
-            Ok(())
-        }
-        Some(other) => Err(LibraryError::Schema(format!(
-            "unexpected schema version {other} (expected {CURRENT_SCHEMA_VERSION})"
-        ))),
         None => {
-            create_v1_tables(conn)?;
-            migrate_v1_to_v2(conn)?;
-            migrate_v2_to_v3(conn)?;
-            migrate_v3_to_v4(conn)?;
-            migrate_v4_to_v5(conn)?;
-            set_version(conn, CURRENT_SCHEMA_VERSION)?;
-            Ok(())
+            create_v1_tables(&tx)?;
+            1
         }
+    };
+
+    // The schema, backfilled Link IDs, and version advance atomically. An error
+    // rolls the entire chain back, making retry safe even for a legacy database.
+    while version < CURRENT_SCHEMA_VERSION {
+        match version {
+            1 => migrate_v1_to_v2(&tx)?,
+            2 => migrate_v2_to_v3(&tx)?,
+            3 => migrate_v3_to_v4(&tx)?,
+            4 => migrate_v4_to_v5(&tx)?,
+            5 => migrate_v5_to_v6(&tx)?,
+            _ => unreachable!("schema version checked above"),
+        }
+        version += 1;
     }
+    set_version(&tx, CURRENT_SCHEMA_VERSION)?;
+    tx.commit()?;
+    Ok(())
 }
 
 fn set_version(conn: &Connection, version: u32) -> LibraryResult<()> {
@@ -222,6 +209,43 @@ fn migrate_v3_to_v4(conn: &Connection) -> LibraryResult<()> {
     Ok(())
 }
 
+/// v6: Permanent, nonzero 32-bit identifiers used by Pro DJ Link clients.
+///
+/// Separate sequences reflect the protocol's separate track and playlist ID
+/// namespaces. AUTOINCREMENT keeps a deleted record's ID from being reassigned;
+/// the CHECK also makes exhaustion fail atomically rather than wrap to zero.
+fn migrate_v5_to_v6(conn: &Connection) -> LibraryResult<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE link_track_ids (
+          link_id INTEGER PRIMARY KEY AUTOINCREMENT
+            CHECK (link_id BETWEEN 1 AND 4294967295),
+          track_id TEXT NOT NULL UNIQUE REFERENCES tracks(id) ON DELETE CASCADE
+        );
+        CREATE TABLE link_setlist_ids (
+          link_id INTEGER PRIMARY KEY AUTOINCREMENT
+            CHECK (link_id BETWEEN 1 AND 4294967295),
+          setlist_id TEXT NOT NULL UNIQUE REFERENCES setlists(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO link_track_ids (track_id)
+          SELECT id FROM tracks ORDER BY created_at, id;
+        INSERT INTO link_setlist_ids (setlist_id)
+          SELECT id FROM setlists ORDER BY created_at, id;
+
+        CREATE TRIGGER tracks_assign_link_id AFTER INSERT ON tracks
+        BEGIN
+          INSERT INTO link_track_ids (track_id) VALUES (NEW.id);
+        END;
+        CREATE TRIGGER setlists_assign_link_id AFTER INSERT ON setlists
+        BEGIN
+          INSERT INTO link_setlist_ids (setlist_id) VALUES (NEW.id);
+        END;
+        "#,
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,11 +256,9 @@ mod tests {
         initialize(&conn).unwrap();
 
         let v: u32 = conn
-            .query_row(
-                "SELECT version FROM schema_meta WHERE id = 1",
-                [],
-                |r| r.get(0),
-            )
+            .query_row("SELECT version FROM schema_meta WHERE id = 1", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(v, CURRENT_SCHEMA_VERSION);
     }
@@ -257,7 +279,7 @@ mod tests {
         )
         .unwrap();
         let err = initialize(&conn).unwrap_err();
-        matches!(err, LibraryError::Schema(_));
+        assert!(matches!(err, LibraryError::Schema(_)));
     }
 
     /// v1 のレガシー DB を最新版にマイグレーションできること。
@@ -311,5 +333,200 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM user_templates", [], |r| r.get(0))
             .unwrap();
         assert_eq!(ut_count, 0);
+    }
+
+    fn legacy_database(version: u32) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE schema_meta (id INTEGER PRIMARY KEY, version INTEGER);",
+        )
+        .unwrap();
+        create_v1_tables(&conn).unwrap();
+        if version >= 2 {
+            migrate_v1_to_v2(&conn).unwrap();
+        }
+        if version >= 3 {
+            migrate_v2_to_v3(&conn).unwrap();
+        }
+        if version >= 4 {
+            migrate_v3_to_v4(&conn).unwrap();
+        }
+        if version >= 5 {
+            migrate_v4_to_v5(&conn).unwrap();
+        }
+        set_version(&conn, version).unwrap();
+        conn
+    }
+
+    fn insert_legacy_track(conn: &Connection, id: &str, path: &str) {
+        conn.execute(
+            "INSERT INTO tracks (id, path, title, artist, created_at, updated_at)
+             VALUES (?1, ?2, '夜明けの音', '東京のDJ', '2025-01-01', '2025-01-02')",
+            [id, path],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn migrates_each_legacy_version_and_preserves_existing_records() {
+        for version in 1..CURRENT_SCHEMA_VERSION {
+            let conn = legacy_database(version);
+            insert_legacy_track(&conn, "track-before-migration", "/音楽/夜明け.wav");
+            if version >= 4 {
+                conn.execute_batch(
+                    "INSERT INTO setlists (id, name, created_at, updated_at)
+                     VALUES ('set-before-migration', '深夜のセット', '2025-01-01', '2025-01-02');",
+                )
+                .unwrap();
+            }
+            initialize(&conn).unwrap();
+            let track: (String, String, String, String, u32) = conn
+                .query_row(
+                    "SELECT t.id, t.path, t.title, t.artist, m.link_id FROM tracks t
+                     JOIN link_track_ids m ON m.track_id = t.id",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )
+                .unwrap();
+            assert_eq!(track.0, "track-before-migration");
+            assert_eq!(track.1, "/音楽/夜明け.wav");
+            assert_eq!(track.2, "夜明けの音");
+            assert_eq!(track.3, "東京のDJ");
+            assert!(track.4 > 0);
+            if version >= 4 {
+                let setlist: (String, String, u32) = conn
+                    .query_row(
+                        "SELECT s.id, s.name, m.link_id FROM setlists s
+                         JOIN link_setlist_ids m ON m.setlist_id = s.id",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .unwrap();
+                assert_eq!(setlist.0, "set-before-migration");
+                assert_eq!(setlist.1, "深夜のセット");
+                assert!(setlist.2 > 0);
+            }
+
+            initialize(&conn).unwrap();
+            let after_reopen: u32 = conn
+                .query_row("SELECT link_id FROM link_track_ids", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(after_reopen, track.4);
+            insert_legacy_track(&conn, "track-after-migration", "/音楽/新曲.wav");
+            let next: u32 = conn
+                .query_row(
+                    "SELECT link_id FROM link_track_ids WHERE track_id = 'track-after-migration'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(next > track.4);
+        }
+    }
+
+    #[test]
+    fn failed_migration_rolls_back_all_schema_changes_and_version() {
+        let conn = legacy_database(1);
+        insert_legacy_track(&conn, "retained-track", "/original.wav");
+        // Deliberate conflict late in the migration chain.
+        conn.execute_batch("CREATE TABLE link_setlist_ids (sentinel TEXT);")
+            .unwrap();
+        assert!(initialize(&conn).is_err());
+        let version: u32 = conn
+            .query_row("SELECT version FROM schema_meta", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1);
+        for table in [
+            "waveforms",
+            "hot_cues",
+            "setlists",
+            "user_templates",
+            "link_track_ids",
+        ] {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(!exists, "partial migration leaked {table}");
+        }
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM tracks WHERE id = 'retained-track'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "夜明けの音");
+        conn.execute_batch("DROP TABLE link_setlist_ids;").unwrap();
+        initialize(&conn).unwrap();
+    }
+
+    #[test]
+    fn link_id_range_and_exhaustion_are_enforced_atomically() {
+        let conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+        insert_legacy_track(&conn, "existing", "/existing.wav");
+        conn.execute("DELETE FROM link_track_ids WHERE track_id = 'existing'", [])
+            .unwrap();
+        for invalid in [0_i64, -1, i64::from(u32::MAX) + 1] {
+            assert!(conn
+                .execute(
+                    "INSERT INTO link_track_ids (link_id, track_id) VALUES (?1, 'existing')",
+                    [invalid],
+                )
+                .is_err());
+        }
+        conn.execute(
+            "INSERT INTO link_track_ids (link_id, track_id) VALUES (?1, 'existing')",
+            [u32::MAX],
+        )
+        .unwrap();
+        let result = conn.execute(
+            "INSERT INTO tracks (id, path, created_at, updated_at)
+             VALUES ('overflow', '/overflow.wav', '', '')",
+            [],
+        );
+        assert!(result.is_err());
+        let rows: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tracks WHERE id = 'overflow'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            rows, 0,
+            "failed ID allocation must also roll back the track insert"
+        );
+
+        conn.execute_batch(
+            "INSERT INTO setlists (id, name, created_at, updated_at) VALUES ('set', 'set', '', '');
+             UPDATE sqlite_sequence SET seq = 4294967295 WHERE name = 'link_setlist_ids';",
+        )
+        .unwrap();
+        assert!(conn.execute(
+            "INSERT INTO setlists (id, name, created_at, updated_at) VALUES ('overflow', 'overflow', '', '')",
+            [],
+        ).is_err());
+        let rows: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM setlists WHERE id = 'overflow'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 0);
     }
 }

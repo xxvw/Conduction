@@ -52,13 +52,15 @@ where
 {
     let dir = download_dir()?;
     info!(url, format = format.as_str(), dir = %dir.display(), "yt download starting");
-    let path = conduction_download::download(url, format, &dir, on_progress)
-        .map_err(|e| e.to_string())?;
+    let path =
+        conduction_download::download(url, format, &dir, on_progress).map_err(|e| e.to_string())?;
     info!(path = %path.display(), "yt download completed");
 
     let track = build_track_from_file(&path).map_err(|e| e.to_string())?;
     let stored = library.with_library(|lib| -> Result<_, String> {
-        let id = lib.upsert_track_by_path(&track).map_err(|e| e.to_string())?;
+        let id = lib
+            .upsert_track_by_path(&track)
+            .map_err(|e| e.to_string())?;
         let stored = lib
             .get_track(id)
             .map_err(|e| e.to_string())?
@@ -75,11 +77,7 @@ where
     Ok(TrackSummary::from_track(&stored))
 }
 
-fn spawn_background_analyze(
-    library: Arc<Mutex<Library>>,
-    track_id: TrackId,
-    path: PathBuf,
-) {
+fn spawn_background_analyze(library: Arc<Mutex<Library>>, track_id: TrackId, path: PathBuf) {
     let _ = thread::Builder::new()
         .name("yt-analyze".into())
         .spawn(move || {
@@ -110,7 +108,8 @@ fn analyze_internal(
     let estimate = estimate_beatgrid(&audio);
     let key_estimate = estimate_key(&audio);
     let mut lib = library.lock();
-    lib.save_waveform(track_id, &wf).map_err(|e| e.to_string())?;
+    lib.save_waveform(track_id, &wf)
+        .map_err(|e| e.to_string())?;
     if let Some(est) = estimate {
         let beats = est.beats(total_sec);
         lib.save_track_analysis(track_id, est.bpm, &beats)

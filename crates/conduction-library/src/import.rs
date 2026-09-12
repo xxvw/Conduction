@@ -28,12 +28,13 @@ pub struct ImportedMetadata {
 ///
 /// タグがない場合は空文字列で埋め、duration のみ properties から取得する。
 pub fn extract_metadata(path: &Path) -> LibraryResult<ImportedMetadata> {
-    let tagged = Probe::open(path)
-        .and_then(|p| p.read())
-        .map_err(|source| LibraryError::Metadata {
-            path: path.to_path_buf(),
-            source,
-        })?;
+    let tagged =
+        Probe::open(path)
+            .and_then(|p| p.read())
+            .map_err(|source| LibraryError::Metadata {
+                path: path.to_path_buf(),
+                source,
+            })?;
 
     let duration = tagged.properties().duration();
 

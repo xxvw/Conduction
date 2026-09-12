@@ -132,15 +132,17 @@ function AudioOutputSection() {
         <h3>Audio output</h3>
       </div>
       <p className="hint">
-        変更を反映するにはアプリを再起動してください。
+        両デッキと自動化を停止すると、変更をすぐに反映できます。チャンネル割り当ては Controller で設定します。
       </p>
+      {state.error && <p className="hint" role="alert">{state.error}</p>}
+      {state.saving && <p className="hint" role="status">出力デバイスを切り替えています…</p>}
       <div className="audio-device-grid">
         <DeviceSelect
           label="MAIN"
           description="観客に流す主出力"
           value={state.mainOutput}
           devices={state.devices}
-          loading={state.loading}
+          loading={state.loading || state.saving}
           allowNone={false}
           onChange={(v) => void setMain(v)}
         />
@@ -149,7 +151,7 @@ function AudioOutputSection() {
           description="ヘッドホン用モニタリング (PFL)"
           value={state.cueOutput}
           devices={state.devices}
-          loading={state.loading}
+          loading={state.loading || state.saving}
           allowNone={true}
           onChange={(v) => void setCue(v)}
         />
@@ -191,8 +193,11 @@ function DeviceSelect({
         }}
       >
         {allowNone && <option value="">— Off (no Cue output) —</option>}
-        {!allowNone && value == null && (
+        {!allowNone && (
           <option value="">— System default —</option>
+        )}
+        {value !== null && !devices.includes(value) && (
+          <option value={value}>{value} — 未接続</option>
         )}
         {devices.map((d) => (
           <option key={d} value={d}>

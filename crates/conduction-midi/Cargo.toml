@@ -1,0 +1,15 @@
+[package]
+name = "conduction-midi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Native MIDI control and confirmed-state feedback for Conduction."
+
+[dependencies]
+midir = "0.10.4"
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

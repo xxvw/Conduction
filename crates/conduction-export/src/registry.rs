@@ -64,8 +64,7 @@ pub fn default_registry() -> PluginRegistry {
 mod tests {
     use super::*;
     use crate::api::{
-        ExportOptions, Exporter, ImportOptions, Importer, LibraryExportReport,
-        LibraryImportReport,
+        ExportOptions, Exporter, ImportOptions, Importer, LibraryExportReport, LibraryImportReport,
     };
     use crate::ExportError;
     use conduction_library::Library;
@@ -111,7 +110,10 @@ mod tests {
         let mut r = PluginRegistry::new();
         r.register_exporter(StubExporter(Format::RekordboxXml));
         let exp = r.export_formats();
-        let xml = exp.iter().find(|f| f.format == Format::RekordboxXml).unwrap();
+        let xml = exp
+            .iter()
+            .find(|f| f.format == Format::RekordboxXml)
+            .unwrap();
         let serato = exp.iter().find(|f| f.format == Format::Serato).unwrap();
         assert!(xml.available);
         assert!(!serato.available);

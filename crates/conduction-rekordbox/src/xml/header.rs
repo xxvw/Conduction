@@ -25,7 +25,11 @@ pub struct DjPlaylists {
     pub version: String,
     #[serde(rename = "PRODUCT", default, skip_serializing_if = "Option::is_none")]
     pub product: Option<Product>,
-    #[serde(rename = "COLLECTION", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "COLLECTION",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub collection: Option<Collection>,
     #[serde(rename = "PLAYLISTS", default, skip_serializing_if = "Option::is_none")]
     pub playlists: Option<Playlists>,

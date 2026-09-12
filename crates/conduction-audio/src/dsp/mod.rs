@@ -6,10 +6,12 @@
 mod coefficients;
 mod echo;
 mod params;
+mod processor;
 mod reverb;
 mod source;
 mod timestretch;
 
 pub use params::DspParams;
+pub(crate) use processor::StereoProcessor;
 pub use source::DjEffectSource;
 pub use timestretch::{TimeStretchParams, TimeStretchSource};

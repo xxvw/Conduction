@@ -31,21 +31,16 @@ pub struct ExportOptions {
 }
 
 /// How an importer should treat a track that already exists in the library.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConflictStrategy {
     /// Leave the existing row untouched.
+    #[default]
     Skip,
     /// Merge incoming metadata into the existing row.
     Update,
     /// Replace the existing row in full.
     Replace,
-}
-
-impl Default for ConflictStrategy {
-    fn default() -> Self {
-        Self::Skip
-    }
 }
 
 /// Inputs the host gives an importer when the user hits "Import".

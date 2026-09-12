@@ -120,7 +120,10 @@ pub fn build_plan(library: &Library, root: PathBuf) -> Result<ExportPlan, Export
         .list_tracks()
         .map_err(|e| ExportError::Library(e.to_string()))?;
 
-    debug!(track_count = tracks.len(), "export plan: gathering analysis");
+    debug!(
+        track_count = tracks.len(),
+        "export plan: gathering analysis"
+    );
 
     let mut planned: Vec<ExportTrack> = Vec::with_capacity(tracks.len());
     for t in tracks {

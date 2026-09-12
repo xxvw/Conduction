@@ -167,9 +167,9 @@ impl Library {
 
     /// 全トラック一覧（作成順）。フィルタ機能は将来の TrackQuery で拡張する。
     pub fn list_tracks(&self) -> LibraryResult<Vec<Track>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT * FROM tracks ORDER BY updated_at DESC, created_at DESC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM tracks ORDER BY updated_at DESC, created_at DESC")?;
         let tracks = stmt
             .query_map([], |row| Ok(track_from_row(row)))?
             .collect::<Result<Result<Vec<_>, _>, _>>()??;
@@ -177,8 +177,10 @@ impl Library {
     }
 
     pub fn delete_track(&self, id: TrackId) -> LibraryResult<()> {
-        self.conn
-            .execute("DELETE FROM tracks WHERE id = ?1", params![id.as_uuid().to_string()])?;
+        self.conn.execute(
+            "DELETE FROM tracks WHERE id = ?1",
+            params![id.as_uuid().to_string()],
+        )?;
         Ok(())
     }
 
@@ -260,9 +262,9 @@ impl Library {
     /// 全 Cue を関連 Track 付きで取得する (Cue 動的マッチング用)。
     /// 件数が多い場合は将来 JOIN クエリ + ページングに置き換える。
     pub fn list_all_cues_with_tracks(&self) -> LibraryResult<Vec<(Cue, Track)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT * FROM cues ORDER BY position_beats ASC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM cues ORDER BY position_beats ASC")?;
         let cues = stmt
             .query_map(params![], |row| Ok(cue_from_row(row)))?
             .collect::<Result<Result<Vec<_>, _>, _>>()??;
@@ -277,9 +279,9 @@ impl Library {
     }
 
     pub fn list_cues_for_track(&self, track_id: TrackId) -> LibraryResult<Vec<Cue>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT * FROM cues WHERE track_id = ?1 ORDER BY position_beats ASC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM cues WHERE track_id = ?1 ORDER BY position_beats ASC")?;
         let cues = stmt
             .query_map(params![track_id.as_uuid().to_string()], |row| {
                 Ok(cue_from_row(row))
@@ -337,11 +339,7 @@ impl Library {
     }
 
     /// 既存のビートグリッドを差し替える（一括 upsert）。
-    pub fn replace_beatgrid(
-        &mut self,
-        track_id: TrackId,
-        beats: &[Beat],
-    ) -> LibraryResult<()> {
+    pub fn replace_beatgrid(&mut self, track_id: TrackId, beats: &[Beat]) -> LibraryResult<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "DELETE FROM beats WHERE track_id = ?1",
@@ -386,12 +384,7 @@ impl Library {
     // -------- Hot Cues --------
 
     /// Hot Cue (slot 1..=8) を upsert で保存。
-    pub fn set_hot_cue(
-        &self,
-        track_id: TrackId,
-        slot: u8,
-        position_sec: f64,
-    ) -> LibraryResult<()> {
+    pub fn set_hot_cue(&self, track_id: TrackId, slot: u8, position_sec: f64) -> LibraryResult<()> {
         if !(1..=8).contains(&slot) {
             return Err(LibraryError::Unsupported(format!(
                 "hot cue slot {slot} out of range 1..=8"
@@ -438,11 +431,7 @@ impl Library {
 
     // -------- Waveform preview --------
 
-    pub fn save_waveform(
-        &self,
-        track_id: TrackId,
-        wf: &WaveformPreview,
-    ) -> LibraryResult<()> {
+    pub fn save_waveform(&self, track_id: TrackId, wf: &WaveformPreview) -> LibraryResult<()> {
         if wf.low.len() != wf.sample_count as usize
             || wf.mid.len() != wf.sample_count as usize
             || wf.high.len() != wf.sample_count as usize
@@ -608,11 +597,10 @@ mod tests {
         let track = sample_track();
         lib.insert_track(&track).unwrap();
 
-        let cue = conduction_core::Cue::new(
-            track.id, 32.0, CueType::Drop, 128.0, sample_key(), 0.8, 32,
-        )
-        .unwrap()
-        .with_mix_roles([MixRole::Entry]);
+        let cue =
+            conduction_core::Cue::new(track.id, 32.0, CueType::Drop, 128.0, sample_key(), 0.8, 32)
+                .unwrap()
+                .with_mix_roles([MixRole::Entry]);
         lib.insert_cue(&cue).unwrap();
 
         let beats = vec![
@@ -635,14 +623,19 @@ mod tests {
         lib.insert_track(&track).unwrap();
 
         let cue1 = conduction_core::Cue::new(
-            track.id, 16.0, CueType::IntroStart, 128.0, sample_key(), 0.4, 16,
+            track.id,
+            16.0,
+            CueType::IntroStart,
+            128.0,
+            sample_key(),
+            0.4,
+            16,
         )
         .unwrap();
-        let cue2 = conduction_core::Cue::new(
-            track.id, 64.0, CueType::Drop, 128.0, sample_key(), 0.9, 32,
-        )
-        .unwrap()
-        .with_mix_roles([MixRole::Entry, MixRole::Exit]);
+        let cue2 =
+            conduction_core::Cue::new(track.id, 64.0, CueType::Drop, 128.0, sample_key(), 0.9, 32)
+                .unwrap()
+                .with_mix_roles([MixRole::Entry, MixRole::Exit]);
 
         lib.insert_cue(&cue1).unwrap();
         lib.insert_cue(&cue2).unwrap();
@@ -653,7 +646,10 @@ mod tests {
         assert_eq!(cues[0].position_beats, 16.0);
         assert_eq!(cues[1].position_beats, 64.0);
         // MixRole の往復
-        assert_eq!(cues[1].mixable_as, BTreeSet::from([MixRole::Entry, MixRole::Exit]));
+        assert_eq!(
+            cues[1].mixable_as,
+            BTreeSet::from([MixRole::Entry, MixRole::Exit])
+        );
     }
 
     #[test]

@@ -1,22 +1,18 @@
 use crate::deck::{Deck, DeckId};
 use crate::device::OutputDevice;
 use crate::error::AudioResult;
+use crate::MixingMode;
 
 /// クロスフェーダーのカーブ形状（要件 6.2）。
 ///
-/// Phase 2a では `Linear` のみ厳密実装。`Smooth` / `Sharp` はプレースホルダとして
-/// `Linear` にフォールバックする（Phase 2c で実装）。
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Linear retains full center gain; Smooth uses equal power; Sharp is a
+/// short cut-in suitable for scratching.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum CrossfaderCurve {
+    #[default]
     Linear,
     Smooth,
     Sharp,
-}
-
-impl Default for CrossfaderCurve {
-    fn default() -> Self {
-        Self::Linear
-    }
 }
 
 /// マスターボリューム許容範囲（0.0〜2.0）。
@@ -57,6 +53,26 @@ impl Mixer {
         Ok(mixer)
     }
 
+    pub fn mode(&self) -> MixingMode {
+        self.deck_a.shared.controls.lock().config.mode
+    }
+    pub fn headphone_mix(&self) -> f32 {
+        self.deck_a.shared.controls.lock().config.headphone_mix
+    }
+    pub fn headphone_volume(&self) -> f32 {
+        self.deck_a.shared.controls.lock().config.headphone_volume
+    }
+    pub fn set_headphone_mix(&mut self, value: f32) {
+        if value.is_finite() {
+            self.deck_a.shared.controls.lock().config.headphone_mix = value.clamp(0.0, 1.0);
+        }
+    }
+    pub fn set_headphone_volume(&mut self, value: f32) {
+        if value.is_finite() {
+            self.deck_a.shared.controls.lock().config.headphone_volume = value.clamp(0.0, 2.0);
+        }
+    }
+
     pub fn set_cue_send(&mut self, id: DeckId, value: f32) {
         self.deck(id).set_cue_send(value);
     }
@@ -78,6 +94,9 @@ impl Mixer {
     // --- Crossfader ---
 
     pub fn set_crossfader(&mut self, pos: f32) {
+        if !pos.is_finite() {
+            return;
+        }
         self.crossfader = pos.clamp(CROSSFADER_MIN, CROSSFADER_MAX);
         self.recompute();
     }
@@ -98,6 +117,9 @@ impl Mixer {
     // --- Master ---
 
     pub fn set_master_volume(&mut self, v: f32) {
+        if !v.is_finite() {
+            return;
+        }
         self.master_volume = v.clamp(MASTER_VOLUME_MIN, MASTER_VOLUME_MAX);
         self.recompute();
     }
@@ -121,8 +143,9 @@ impl Mixer {
         let (side_a, side_b) = crossfader_sides(self.crossfader, self.crossfader_curve);
         let eff_a = self.deck_a.channel_volume() * side_a * self.master_volume;
         let eff_b = self.deck_b.channel_volume() * side_b * self.master_volume;
-        self.deck_a.apply_effective_volume(eff_a);
-        self.deck_b.apply_effective_volume(eff_b);
+        let mut controls = self.deck_a.shared.controls.lock();
+        controls.decks[0].effective_volume = eff_a.clamp(0.0, 4.0);
+        controls.decks[1].effective_volume = eff_b.clamp(0.0, 4.0);
     }
 }
 
@@ -130,11 +153,18 @@ impl Mixer {
 /// A / B 両サイドのゲイン係数（0..1）を返す。
 ///
 /// Linear: center (pos=0) で両方 1.0、端で片側が 0.0 になる。
-fn crossfader_sides(pos: f32, curve: CrossfaderCurve) -> (f32, f32) {
+pub(crate) fn crossfader_sides(pos: f32, curve: CrossfaderCurve) -> (f32, f32) {
     let pos = pos.clamp(CROSSFADER_MIN, CROSSFADER_MAX);
     match curve {
-        // Phase 2c で独自実装予定。現状は Linear にフォールバック。
-        CrossfaderCurve::Linear | CrossfaderCurve::Smooth | CrossfaderCurve::Sharp => {
+        CrossfaderCurve::Smooth => {
+            let angle = (pos + 1.0) * std::f32::consts::FRAC_PI_4;
+            (angle.cos(), angle.sin())
+        }
+        CrossfaderCurve::Sharp => (
+            (1.0 - pos).mul_add(10.0, 0.0).clamp(0.0, 1.0),
+            (1.0 + pos).mul_add(10.0, 0.0).clamp(0.0, 1.0),
+        ),
+        CrossfaderCurve::Linear => {
             let side_a = if pos <= 0.0 { 1.0 } else { 1.0 - pos };
             let side_b = if pos >= 0.0 { 1.0 } else { 1.0 + pos };
             (side_a, side_b)

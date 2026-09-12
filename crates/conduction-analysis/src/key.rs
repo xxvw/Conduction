@@ -170,7 +170,7 @@ fn precompute_bin_to_pitch(sample_rate: u32) -> Vec<Option<u8>> {
     out.push(None); // DC
     for k in 1..FFT_SIZE / 2 {
         let f = k as f32 * bin_hz;
-        if f < 27.5 || f > 4186.0 {
+        if !f.is_nan() && !(27.5..=4186.0).contains(&f) {
             // A0..C8 の範囲外は捨てる。
             out.push(None);
             continue;
@@ -198,7 +198,9 @@ mod tests {
     fn synth_tone(freq: f32, sample_rate: u32, secs: f32) -> Vec<f32> {
         let n = (sample_rate as f32 * secs) as usize;
         (0..n)
-            .map(|i| (2.0 * std::f32::consts::PI * freq * i as f32 / sample_rate as f32).sin() * 0.5)
+            .map(|i| {
+                (2.0 * std::f32::consts::PI * freq * i as f32 / sample_rate as f32).sin() * 0.5
+            })
             .collect()
     }
 

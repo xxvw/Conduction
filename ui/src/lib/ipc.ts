@@ -120,8 +120,8 @@ export const ipc = {
   getSettings() {
     return call<AppSettings>("get_settings");
   },
-  saveSettings(settings: AppSettings) {
-    return call<void>("save_settings", { newSettings: settings });
+  saveSettings(settings: AppSettings, intent?: "main" | "cue" | "keybindings") {
+    return call<void>("save_settings", { newSettings: settings, intent: intent ?? null });
   },
   listAudioDevices() {
     return call<string[]>("list_audio_devices");

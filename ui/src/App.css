@@ -19,6 +19,18 @@
   flex-shrink: 0;
 }
 
+/* Controller already exposes its master fader beside the decks. Keep every
+   navigation item reachable when the performance workspace is compact. */
+.app[data-screen="controller"] .topbar .master-slim { display: none; }
+.app[data-screen="controller"] .topbar { gap: 16px; }
+.app[data-screen="controller"] .topbar .nav { min-width: 0; overflow-x: auto; flex-shrink: 1; }
+.app[data-screen="controller"] .topbar .brand,
+.app[data-screen="controller"] .topbar .topbar-icon-btn { flex-shrink: 0; }
+@media (max-width: 1280px) {
+  .app[data-screen="controller"] .topbar .perf-hud { display: none; }
+  .app[data-screen="controller"] .topbar { padding-inline: 16px; gap: 12px; }
+}
+
 .brand {
   font-family: var(--font-display);
   font-size: var(--fs-h3);

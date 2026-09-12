@@ -28,8 +28,8 @@ impl Exporter for RekordboxXmlExporter {
         library: &mut Library,
         options: &ExportOptions,
     ) -> Result<LibraryExportReport, ExportError> {
-        let dj = library_to_dj_playlists(library)
-            .map_err(|e| ExportError::Library(e.to_string()))?;
+        let dj =
+            library_to_dj_playlists(library).map_err(|e| ExportError::Library(e.to_string()))?;
 
         let body = quick_xml::se::to_string(&dj)
             .map_err(|e| ExportError::Library(format!("xml serialize: {e}")))?;
@@ -41,11 +41,7 @@ impl Exporter for RekordboxXmlExporter {
             bytes_written = payload.len() as u64;
         }
 
-        let tracks_written = dj
-            .collection
-            .as_ref()
-            .map(|c| c.tracks.len())
-            .unwrap_or(0);
+        let tracks_written = dj.collection.as_ref().map(|c| c.tracks.len()).unwrap_or(0);
 
         Ok(LibraryExportReport {
             format: Format::RekordboxXml,

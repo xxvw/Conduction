@@ -1,0 +1,82 @@
+[
+  {
+    "file": "nfs-s06-lookup-contents-request.bin",
+    "capture": "S06",
+    "timestamp_us": 1785348920468300,
+    "source": "169.254.103.172:3440",
+    "destination": "169.254.202.84:2049",
+    "bytes": 112,
+    "sha256": "afa07ac759a75d664b08f981d7edd9f0c0fa2d43c626f88522eee352e0779655",
+    "capture_sha256": "c69d0ea093991dce8181eb286031faed8940aa806ed9dc5737e51919e0bb8bf2"
+  },
+  {
+    "file": "nfs-s06-lookup-contents-reply.bin",
+    "capture": "S06",
+    "timestamp_us": 1785348920469492,
+    "source": "169.254.202.84:2049",
+    "destination": "169.254.103.172:3440",
+    "bytes": 128,
+    "sha256": "863bd38689abb281a963905cf7acef5d20b4a690c6609f5a9864e8ea0523a5f5",
+    "capture_sha256": "c69d0ea093991dce8181eb286031faed8940aa806ed9dc5737e51919e0bb8bf2"
+  },
+  {
+    "file": "nfs-s06-lookup-artist-request.bin",
+    "capture": "S06",
+    "timestamp_us": 1785348920470290,
+    "source": "169.254.103.172:3440",
+    "destination": "169.254.202.84:2049",
+    "bytes": 112,
+    "sha256": "00144812f0801c5bc1c31677f87b40a9a4cad1825c6e2f11f10419bd95772bf9",
+    "capture_sha256": "c69d0ea093991dce8181eb286031faed8940aa806ed9dc5737e51919e0bb8bf2"
+  },
+  {
+    "file": "nfs-s06-lookup-track-request.bin",
+    "capture": "S06",
+    "timestamp_us": 1785348920476895,
+    "source": "169.254.103.172:3440",
+    "destination": "169.254.202.84:2049",
+    "bytes": 168,
+    "sha256": "b2cdebcc9ef306fbc7ed74f1f453ea88d40755986ce8ba62f37b0d3fc85eaf9a",
+    "capture_sha256": "c69d0ea093991dce8181eb286031faed8940aa806ed9dc5737e51919e0bb8bf2"
+  },
+  {
+    "file": "nfs-s06-read-8192-request.bin",
+    "capture": "S06",
+    "timestamp_us": 1785348920627232,
+    "source": "169.254.103.172:3442",
+    "destination": "169.254.202.84:2049",
+    "bytes": 104,
+    "sha256": "e8c714490f13a7644cf90f5ffa8309a231def12bdddfd421b17417c7144445e5",
+    "capture_sha256": "c69d0ea093991dce8181eb286031faed8940aa806ed9dc5737e51919e0bb8bf2"
+  },
+  {
+    "file": "nfs-s13-mount-usb-request.bin",
+    "capture": "S13",
+    "timestamp_us": 1785360130212643,
+    "source": "169.254.202.84:1065",
+    "destination": "169.254.103.172:48276",
+    "bytes": 72,
+    "sha256": "47977625c570b2a7d8097c31f4efeb46759bf5a5fcf0e1cb92485696d11f8bfc",
+    "capture_sha256": "b526b674610de6be2589f1f91abd6c5be56486a22afa79e25f88bdde7919adfd"
+  },
+  {
+    "file": "nfs-s13-mount-usb-reply.bin",
+    "capture": "S13",
+    "timestamp_us": 1785360130213879,
+    "source": "169.254.103.172:48276",
+    "destination": "169.254.202.84:1065",
+    "bytes": 60,
+    "sha256": "5d76315894682ddf9bf12444d7365510da7bee94b499bd4c4c03c270ca3f1ed1",
+    "capture_sha256": "b526b674610de6be2589f1f91abd6c5be56486a22afa79e25f88bdde7919adfd"
+  },
+  {
+    "file": "nfs-linkinfo-export-reply.bin",
+    "capture": "LinkInfo",
+    "timestamp_us": 1462417643081928,
+    "source": "169.254.99.60:48276",
+    "destination": "169.254.192.112:1053",
+    "bytes": 172,
+    "sha256": "bb2204da6c5601b223e822f4e8289892e4df4799465db2bc14d6e2088e30d7e5",
+    "capture_sha256": "e87e12b109cb2b5993d4755b122d2f7af1a4c95821acfb2e233d67ee37697559"
+  }
+]

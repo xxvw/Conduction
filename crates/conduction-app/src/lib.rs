@@ -9,8 +9,13 @@ pub mod commands;
 pub mod export_state;
 pub mod http_api;
 pub mod library_state;
-pub mod settings;
+pub mod link_library;
+pub mod performance;
+mod performance_bridge;
+mod performance_commands;
+mod performance_http;
 pub mod setlist_state;
+pub mod settings;
 pub mod system_stats;
 pub mod youtube;
 
@@ -22,11 +27,16 @@ pub fn run() {
     init_tracing();
 
     let settings = settings::SettingsHandle::open_default().expect("settings must open");
-    let main_device_name = settings.get().audio_main_output.clone();
-    let cue_device_name = settings.get().audio_cue_output.clone();
-    let audio = audio_engine::spawn(main_device_name, cue_device_name)
+    let audio = audio_engine::spawn_with_config(settings.get().audio_config())
         .expect("audio engine must start");
     let library = library_state::LibraryHandle::open_default().expect("library must open");
+    let performance =
+        performance::PerformanceHandle::new(audio.clone(), library.clone(), settings.clone())
+            .expect("performance service must start");
+    let restore = performance.clone();
+    tauri::async_runtime::spawn(async move {
+        restore.restore().await;
+    });
     let setlists = setlist_state::SetlistHandle::new(library.shared());
     let stats = system_stats::SystemStatsHandle::new();
     let export_registry = {
@@ -44,6 +54,7 @@ pub fn run() {
             settings: settings.clone(),
             stats: stats.clone(),
             setlists: setlists.clone(),
+            performance: performance.clone(),
         },
         http_api::DEFAULT_HTTP_PORT,
     );
@@ -56,7 +67,21 @@ pub fn run() {
         .manage(settings)
         .manage(setlists)
         .manage(export_registry)
+        .manage(performance)
         .invoke_handler(tauri::generate_handler![
+            performance_commands::get_performance_status,
+            performance_commands::perform,
+            performance_commands::list_audio_outputs,
+            performance_commands::configure_audio,
+            performance_commands::list_link_interfaces,
+            performance_commands::configure_link,
+            performance_commands::refresh_link_library,
+            performance_commands::request_link_master,
+            performance_commands::list_midi_devices,
+            performance_commands::list_midi_profiles,
+            performance_commands::configure_midi,
+            performance_commands::disconnect_midi,
+            performance_commands::set_performance_browser,
             commands::load_track,
             commands::play,
             commands::pause,

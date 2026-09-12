@@ -38,6 +38,13 @@ conduction-download.workspace = true
 conduction-export.workspace = true
 conduction-rekordbox.workspace = true
 conduction-script.workspace = true
+conduction-link.workspace = true
+conduction-midi.workspace = true
+symphonia.workspace = true
+rubato.workspace = true
+hound = "3.5"
+sha2 = "0.10"
+network-interface = "2"
 
 tauri = { version = "2.0", features = [] }
 tauri-plugin-dialog = "2.0"

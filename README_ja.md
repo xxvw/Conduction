@@ -34,9 +34,19 @@
 - ビートスナップ付きループ、bar 単位の伸縮
 - トラックごとに Hot Cue 8 個 + 型付き Cue (Drop / Intro / Breakdown / Outro …)
 
+### Controller / 実機接続
+
+- **Controller 画面**: 左右のデッキ、ジョグ、Transport Cue、8 個の Hot Cue、中央ミキサー、検索・セットリストを 1 画面で操作
+- USB 音声出力は **Internal** (MAIN / ヘッドホン CUE) と **External** (デッキ A / B を外部ミキサーへ個別出力) を選択
+- CDJ-3000 / CDJ-2000NXS2、DJM-A9、DDJ-FLX4 / FLX10 向けの USB MIDI プリセット。A9 は CH1 → A / CH3 → B、FLX10 はデッキ 1 / 2 を使用
+- **Pro DJ Link は実験的対応**: LAN 上の機器検出・拍同期・ライブラリ配信を実装。対象実機での選曲・ロード・演奏は未検証で、互換性認証はしていない
+- 同じ CDJ では、LAN から曲を読み込んで本体で演奏するモードと、USB で Conduction のデッキを操作するモードを選ぶ
+
+接続手順・対応範囲・実機検証項目は [`Controller 実機検証ガイド`](./docs/controller-hardware-validation.md) を参照。
+
 ### ライブラリ
 - フォルダスキャンによる取り込み、BPM / Camelot キー / Energy 推定、波形キャッシュ
-- SQLite で永続化 (現在 schema v5、自動マイグレーション)
+- SQLite で永続化 (現在 schema v6、自動マイグレーション)。Link 用の曲・セットリスト ID は再起動や同一パスの再取り込みで維持
 - `MixSuggestion` パネルが、アクティブデッキの典型 Cue に対する BPM / Key / Energy 互換性で次曲候補を提案
 
 ### 自動化テンプレート
@@ -110,6 +120,8 @@ conduction/
 │   ├── conduction-analysis/    BPM / キー / エネルギー検出
 │   ├── conduction-conductor/   テンプレート実行 + Cue マッチング
 │   ├── conduction-library/     SQLite 永続化
+│   ├── conduction-link/        実験的 Pro DJ Link / LAN ライブラリ配信
+│   ├── conduction-midi/        USB MIDI プリセット / 確定状態による LED 更新
 │   ├── conduction-claude/      Claude CLI 連携 (feature: claude-analysis)
 │   ├── conduction-download/    yt-dlp 連携 (feature: yt-download)
 │   ├── conduction-export/      .cset シリアライズ
@@ -126,6 +138,7 @@ conduction/
 
 - [`install.md`](./install.md) — LLM エージェントが読んでセットアップを完遂できるレベルの手順書
 - [`usage.md`](./usage.md) — 全画面 + 全ショートカット + 全 Lua API
+- [`docs/controller-hardware-validation.md`](./docs/controller-hardware-validation.md) — Controller 接続と実機検証の記録項目
 - [`conduction-requirements.md`](./conduction-requirements.md) — 詳細仕様書 (日本語)
 - [`ui/design-system/DESIGN_SYSTEM.md`](./ui/design-system/DESIGN_SYSTEM.md) — デザイントークンとコンポーネント
 

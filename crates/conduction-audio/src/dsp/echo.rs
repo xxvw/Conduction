@@ -32,11 +32,9 @@ impl EchoEffect {
             return input;
         }
         let time_ms = time_ms.clamp(10.0, 2400.0);
-        let delay_samples =
-            ((time_ms / 1000.0) * self.sample_rate) as usize;
+        let delay_samples = ((time_ms / 1000.0) * self.sample_rate) as usize;
         let delay_samples = delay_samples.clamp(1, self.buffer.len() - 1);
-        let read_pos =
-            (self.write_pos + self.buffer.len() - delay_samples) % self.buffer.len();
+        let read_pos = (self.write_pos + self.buffer.len() - delay_samples) % self.buffer.len();
         let delayed = self.buffer[read_pos];
         let fb = feedback.clamp(0.0, 0.92);
         // フィードバックループ: 入力 + 過去の出力 * fb
